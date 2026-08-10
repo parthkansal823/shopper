@@ -32,7 +32,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!token) return;
     setLoading(true);
-    const API_BASE = import.meta.env.VITE_API_URL || "https://shopper-backend-2n4n.onrender.com";
+    const API_BASE = import.meta.env.VITE_API_URL || "https://shopper-backend-mqcf.onrender.com";
     fetch(`${API_BASE}/api/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })

@@ -30,7 +30,7 @@ jobs:
         env:
           # Override in repo Settings -> Secrets and variables -> Variables
           # if the backend URL changes.
-          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://shopper-backend-2n4n.onrender.com' }}
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://shopper-backend-mqcf.onrender.com' }}
         run: |
           echo "Pinging $BACKEND_URL/health"
           # --max-time 90 covers a cold start; retries cover a flaky wake-up.

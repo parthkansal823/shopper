@@ -45,7 +45,7 @@ services:
       - key: FRONTEND_URL
         value: https://shoppernk.netlify.app
       - key: API_PUBLIC_URL
-        value: https://shopper-backend-2n4n.onrender.com
+        value: https://shopper-backend-mqcf.onrender.com
       - key: CORS_ORIGINS
         value: https://shoppernk.netlify.app
 
@@ -66,7 +66,7 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: https://shopper-backend-2n4n.onrender.com/api/auth/google/callback
+        value: https://shopper-backend-mqcf.onrender.com/api/auth/google/callback
 
       # ----- SMTP (required for OTP and notification email) -----
       - key: SMTP_HOST

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../components/AuthContext";
 import { useToast } from "../components/Toast";
 
-const API_BASE = import.meta.env.VITE_API_URL || "https://shopper-backend-2n4n.onrender.com";
+const API_BASE = import.meta.env.VITE_API_URL || "https://shopper-backend-mqcf.onrender.com";
 
 export default function AuthCallbackPage() {
   const [params] = useSearchParams();
