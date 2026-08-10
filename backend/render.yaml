@@ -43,11 +43,11 @@ services:
       # emails; API_PUBLIC_URL builds the iCal subscription URL. Both must be
       # the real public origins, with no trailing slash.
       - key: FRONTEND_URL
-        value: https://shoppernk.netlify.app
+        value: https://shopper-ap823.netlify.app
       - key: API_PUBLIC_URL
         value: https://shopper-backend-mqcf.onrender.com
       - key: CORS_ORIGINS
-        value: https://shoppernk.netlify.app
+        value: https://shopper-ap823.netlify.app
 
       # ----- Auth -----
       # Generate once and paste into the dashboard:
