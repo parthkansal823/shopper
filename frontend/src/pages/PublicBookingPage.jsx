@@ -157,6 +157,11 @@ export default function PublicBookingPage() {
   const toast = useToast();
   const resendTimer = useRef(null);
 
+  // Slots come back keyed by absolute start_utc, so a day's response is good
+  // for any timezone the visitor picks — cache it and re-filter client-side
+  // instead of refetching three days on every date or timezone change.
+  const slotCache = useRef(new Map());
+
   const [eventType, setEventType] = useState(null);
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [timezone, setTimezone] = useState(browserTimezone);
@@ -187,6 +192,7 @@ export default function PublicBookingPage() {
   const chosenSlot = slots.find((slot) => slot.start_utc === selectedSlot);
 
   useEffect(() => {
+    slotCache.current.clear();
     (async () => {
       setLoadingEvent(true);
       try {
@@ -205,10 +211,24 @@ export default function PublicBookingPage() {
     let cancelled = false;
     (async () => {
       if (!slug || !selectedDate) return;
-      setLoadingSlots(true);
+      const days = [shiftDateKey(selectedDate, -1), selectedDate, shiftDateKey(selectedDate, 1)];
+      const cached = days.map((day) => slotCache.current.get(`${slug}|${day}`));
+      const allCached = cached.every(Boolean);
+
+      // Only show the skeleton for a real fetch; a cache hit should feel instant.
+      if (!allCached) setLoadingSlots(true);
       try {
-        const days = [shiftDateKey(selectedDate, -1), selectedDate, shiftDateKey(selectedDate, 1)];
-        const results = await Promise.all(days.map((day) => api.getSlots(slug, day).catch(() => [])));
+        const results = await Promise.all(
+          days.map((day, index) => {
+            if (cached[index]) return cached[index];
+            return api.getSlots(slug, day)
+              .then((slotsForDay) => {
+                slotCache.current.set(`${slug}|${day}`, slotsForDay);
+                return slotsForDay;
+              })
+              .catch(() => []);
+          })
+        );
         if (cancelled) return;
 
         const byStart = new Map();

@@ -18,6 +18,7 @@ from ..schemas import (
 from ..serializers import booking_with_event_type
 from ..services.booking_service import (
     find_slot_conflict,
+    generate_available_days,
     generate_slots,
     get_public_event_type,
     get_timezone,
@@ -139,13 +140,10 @@ def get_available_days(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid month. Use YYYY-MM.")
 
-    days: list[str] = []
-    cursor = first
-    while cursor.month == first.month:
-        if generate_slots(db, event_type, cursor):
-            days.append(cursor.isoformat())
-        cursor += timedelta(days=1)
-    return days
+    # Last day of the month: step to the 1st of the next, then back one.
+    next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    last = next_month - timedelta(days=1)
+    return generate_available_days(db, event_type, first, last)
 
 
 # -------------------------------------------------------------- booking --

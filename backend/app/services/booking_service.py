@@ -11,6 +11,7 @@ All reads are scoped by ``owner_id``: two hosts never see each other's rules,
 blockouts or bookings.
 """
 
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -93,24 +94,107 @@ def _windows_for_day(db: Database, owner_id: str, day_index: int) -> list[tuple[
     return sorted(windows)
 
 
+@dataclass
+class _RangeData:
+    """Availability data read once and reused across a span of days.
+
+    Generating slots a day at a time re-reads the host's timezone, rules,
+    blockouts and bookings on every call — four round trips per day, which a
+    month view multiplies by thirty against a remote cluster. Reading each
+    collection once for the whole span is what keeps the calendar responsive.
+    """
+
+    timezone_name: str
+    windows_by_weekday: dict[int, list[tuple[time, time]]]
+    blocked_days: set[str]
+    busy: list[dict]
+
+
+def _load_range(db: Database, owner_id: str, first_day: date, last_day: date) -> _RangeData:
+    """Read every collection slot generation needs, once, for a whole span."""
+    timezone_name = get_timezone(db, owner_id)
+    tz = _safe_zone(timezone_name)
+
+    windows_by_weekday: dict[int, list[tuple[time, time]]] = {}
+    for rule in db.availability_rules.find({"owner_id": owner_id, "is_active": True}):
+        try:
+            start = _parse_time(rule["start_time"])
+            end = _parse_time(rule["end_time"])
+        except (KeyError, ValueError):
+            continue
+        if start < end:
+            windows_by_weekday.setdefault(rule.get("day_of_week"), []).append((start, end))
+    for windows in windows_by_weekday.values():
+        windows.sort()
+
+    # Blockouts are stored as ranges; expand only the part overlapping the span.
+    blocked_days: set[str] = set()
+    for blockout in db.blockout_dates.find({
+        "owner_id": owner_id,
+        "start_date": {"$lte": last_day.isoformat()},
+        "end_date": {"$gte": first_day.isoformat()},
+    }):
+        try:
+            cursor = max(date.fromisoformat(blockout["start_date"]), first_day)
+            finish = min(date.fromisoformat(blockout["end_date"]), last_day)
+        except (KeyError, ValueError):
+            continue
+        while cursor <= finish:
+            blocked_days.add(cursor.isoformat())
+            cursor += timedelta(days=1)
+
+    # The extra day either side mirrors the single-day query: a booking that
+    # started yesterday can still overlap this morning.
+    span_start_utc = _to_naive_utc(datetime.combine(first_day, time.min, tz)) - timedelta(days=1)
+    span_end_utc = _to_naive_utc(datetime.combine(last_day + timedelta(days=1), time.min, tz))
+    busy = list(db.bookings.find({
+        "owner_id": owner_id,
+        "status": "confirmed",
+        "start_time": {"$gte": span_start_utc, "$lt": span_end_utc},
+    }))
+
+    return _RangeData(timezone_name, windows_by_weekday, blocked_days, busy)
+
+
 def generate_slots(db: Database, event_type: dict, requested_date: date) -> list[dict]:
     """Bookable slots for one calendar day, in the host's timezone."""
+    owner_id = event_type.get("owner_id", "")
+    data = _load_range(db, owner_id, requested_date, requested_date)
+    return _slots_for_day(event_type, requested_date, data)
+
+
+def generate_available_days(
+    db: Database, event_type: dict, first_day: date, last_day: date
+) -> list[str]:
+    """Days in a span with at least one open slot, over a single read of the data."""
+    owner_id = event_type.get("owner_id", "")
+    data = _load_range(db, owner_id, first_day, last_day)
+
+    days: list[str] = []
+    cursor = first_day
+    while cursor <= last_day:
+        if _slots_for_day(event_type, cursor, data):
+            days.append(cursor.isoformat())
+        cursor += timedelta(days=1)
+    return days
+
+
+def _slots_for_day(event_type: dict, requested_date: date, data: _RangeData) -> list[dict]:
+    """Slot generation proper, against data already in memory."""
     if not event_type.get("is_active", True):
         return []
 
-    owner_id = event_type.get("owner_id", "")
-    timezone_name = get_timezone(db, owner_id)
-    tz = _safe_zone(timezone_name)
+    tz = _safe_zone(data.timezone_name)
 
     max_advance = event_type.get("max_advance_days", 60)
     max_date = datetime.now(tz).date() + timedelta(days=max_advance)
     if requested_date > max_date:
         return []
 
-    if is_blocked(db, owner_id, requested_date):
+    if requested_date.isoformat() in data.blocked_days:
         return []
 
-    windows = _windows_for_day(db, owner_id, requested_date.weekday())
+    windows = data.windows_by_weekday.get(requested_date.weekday(), [])
     if not windows:
         return []
 
@@ -123,20 +207,11 @@ def generate_slots(db: Database, event_type: dict, requested_date: date) -> list
     slot_duration = timedelta(minutes=event_type["duration"])
     slot_step = slot_duration + buffer
 
-    day_start_local = datetime.combine(requested_date, time.min, tz)
-    day_start_utc = _to_naive_utc(day_start_local)
-    day_end_utc = _to_naive_utc(day_start_local + timedelta(days=1))
-
     # Busy times span every event type this owner offers — a 09:00 booking on
     # "Intro Call" must also block 09:00 on "Deep Dive".
-    busy = list(db.bookings.find({
-        "owner_id": owner_id,
-        "status": "confirmed",
-        "start_time": {"$gte": day_start_utc - timedelta(days=1), "$lt": day_end_utc},
-    }))
     busy_ranges = [
         (b["start_time"], b.get("end_time") or b["start_time"] + slot_duration)
-        for b in busy
+        for b in data.busy
     ]
 
     slots: list[dict] = []
