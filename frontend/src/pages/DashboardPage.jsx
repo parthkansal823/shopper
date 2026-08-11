@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState";
 import SectionCard from "../components/SectionCard";
 import Icon from "../components/Icon";
@@ -127,6 +128,9 @@ export default function DashboardPage() {
 
   const [summary, setSummary] = useState(null);
   const [eventTypes, setEventTypes] = useState([]);
+  // Assume set up until proven otherwise, so the checklist never flashes
+  // on screen for an established host while data loads.
+  const [hasAvailability, setHasAvailability] = useState(true);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
@@ -149,9 +153,18 @@ export default function DashboardPage() {
   async function load() {
     setLoading(true);
     try {
-      const [summaryData, list] = await Promise.all([api.getSummary(), api.getEventTypes()]);
+      const [summaryData, list, availability] = await Promise.all([
+        api.getSummary(),
+        api.getEventTypes(),
+        // Only used for the setup checklist; a failure here shouldn't blank
+        // the whole dashboard.
+        api.getAvailability().catch(() => null),
+      ]);
       setSummary(summaryData);
       setEventTypes(list);
+      setHasAvailability(
+        availability === null || (availability.rules || []).some((rule) => rule.is_active !== false)
+      );
     } catch (error) {
       toast.error(error.message || "Could not load your dashboard.");
     } finally {
@@ -283,8 +296,65 @@ export default function DashboardPage() {
     { label: "All bookings", value: summary?.total_bookings_count ?? 0 },
   ];
 
+  // Until availability and an event type both exist, the public booking page
+  // has nothing to show — so say that plainly instead of leaving empty panels.
+  const setupSteps = [
+    {
+      done: hasAvailability,
+      label: "Set your weekly availability",
+      hint: "The hours guests are allowed to book.",
+      to: "/availability",
+      action: "Set hours",
+    },
+    {
+      done: eventTypes.length > 0,
+      label: "Create your first event type",
+      hint: "A meeting people can book — its length, and its link.",
+      to: null,
+      action: "Create one",
+    },
+  ];
+  const setupRemaining = setupSteps.filter((step) => !step.done);
+
   return (
     <div className="stack">
+      {!loading && setupRemaining.length > 0 && (
+        <SectionCard
+          title="Finish setting up"
+          subtitle="Your booking page stays empty until these are done."
+        >
+          <ol className="steps-list">
+            {setupSteps.map((step) => (
+              <li key={step.label} className={`setup-step${step.done ? " is-done" : ""}`}>
+                <span className="setup-mark" aria-hidden="true">
+                  {step.done ? <Icon name="check" size={12} strokeWidth={3} /> : null}
+                </span>
+                <span className="setup-text">
+                  <span className="setup-label">{step.label}</span>
+                  <span className="tiny subtle">{step.hint}</span>
+                </span>
+                {!step.done && (
+                  step.to
+                    ? <Link className="btn btn-sm" to={step.to}>{step.action}</Link>
+                    : (
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => {
+                          resetEditor();
+                          document.getElementById("event-type-editor")
+                            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }}
+                      >
+                        {step.action}
+                      </button>
+                    )
+                )}
+              </li>
+            ))}
+          </ol>
+        </SectionCard>
+      )}
+
       {loading && !summary ? <SkeletonStats /> : (
         <div className="grid-auto">
           {stats.map((stat) => (
@@ -360,6 +430,7 @@ export default function DashboardPage() {
         </SectionCard>
 
         <SectionCard
+          id="event-type-editor"
           title={editingId ? "Edit event type" : "New event type"}
           subtitle={editingId ? "Changes apply to future bookings." : "Set up a booking page in under a minute."}
           actions={editingId ? <button className="btn btn-sm btn-ghost" onClick={resetEditor}>Cancel</button> : null}

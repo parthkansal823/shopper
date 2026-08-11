@@ -1,9 +1,14 @@
+import logging
+
 from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from pymongo.database import Database
+from pymongo.errors import OperationFailure
 
 from .config import settings
+
+logger = logging.getLogger("schedulr.database")
 
 _client: MongoClient = MongoClient(settings.MONGODB_URI)
 
@@ -49,6 +54,22 @@ def ensure_indexes(db: Database) -> None:
     db.reminder_log.create_index(
         [("booking_id", ASCENDING), ("workflow_id", ASCENDING)], unique=True
     )
+
+    # Last line of defence against a double book. The application checks for a
+    # conflict before inserting, but two simultaneous requests can both pass
+    # that check; only the database can settle the race. Partial, so cancelled
+    # bookings don't reserve the slot forever.
+    try:
+        db.bookings.create_index(
+            [("owner_id", ASCENDING), ("start_time", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"status": "confirmed"},
+            name="uniq_confirmed_slot",
+        )
+    except OperationFailure as exc:
+        # Pre-existing duplicates would fail this. Log rather than block boot —
+        # the application-level check still runs.
+        logger.warning("Could not create the unique confirmed-slot index: %s", exc)
 
     # Mongo evicts these automatically; no cleanup job needed.
     db.rate_limits.create_index("expires_at", expireAfterSeconds=0)

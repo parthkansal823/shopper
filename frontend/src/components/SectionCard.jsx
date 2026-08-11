@@ -1,7 +1,7 @@
 /** A titled panel. `actions` sits opposite the title in the header. */
-export default function SectionCard({ title, subtitle, actions, children, bodyClass = "" }) {
+export default function SectionCard({ id, title, subtitle, actions, children, bodyClass = "" }) {
   return (
-    <section className="card">
+    <section className="card" id={id}>
       {(title || actions) && (
         <header className="card-head">
           <div>

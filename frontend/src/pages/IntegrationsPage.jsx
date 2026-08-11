@@ -129,6 +129,42 @@ export default function IntegrationsPage() {
   const [feedUrl, setFeedUrl] = useState("");
   const [feedBusy, setFeedBusy] = useState(false);
 
+  const [calendarSync, setCalendarSync] = useState({ connected: false, configured: true, needs_reconnect: false });
+  const [calBusy, setCalBusy] = useState(false);
+
+  async function refreshCalendarSync() {
+    try {
+      setCalendarSync(await api.getCalendarSyncStatus());
+    } catch {
+      setCalendarSync((current) => ({ ...current, connected: false }));
+    }
+  }
+
+  async function connectCalendar() {
+    setCalBusy(true);
+    try {
+      const { url } = await api.startCalendarSync();
+      window.location.href = url;   // leaves the app for Google's consent screen
+    } catch (error) {
+      toast.error(error.message || "Could not start Google Calendar setup.");
+      setCalBusy(false);
+    }
+  }
+
+  async function disconnectCalendar() {
+    if (!window.confirm("Disconnect Google Calendar? Your personal events will stop blocking times.")) return;
+    setCalBusy(true);
+    try {
+      await api.disconnectCalendarSync();
+      toast.success("Google Calendar disconnected.");
+      refreshCalendarSync();
+    } catch (error) {
+      toast.error(error.message || "Could not disconnect.");
+    } finally {
+      setCalBusy(false);
+    }
+  }
+
   async function load() {
     setLoading(true);
     try {
@@ -146,6 +182,28 @@ export default function IntegrationsPage() {
   useEffect(() => {
     api.getCalendarFeed().then((feed) => setFeedUrl(feed.url)).catch(() => setFeedUrl(""));
   }, []);
+
+  // The Google consent screen returns to /integrations?calendar=<result>.
+  // Report it, then strip the parameter so a refresh doesn't repeat the toast.
+  useEffect(() => {
+    refreshCalendarSync();
+
+    const result = new URLSearchParams(window.location.search).get("calendar");
+    if (!result) return;
+
+    const messages = {
+      connected: ["success", "Google Calendar connected — your events now block times."],
+      denied: ["error", "Google Calendar access was declined."],
+      invalid: ["error", "That setup link expired. Please try connecting again."],
+      failed: ["error", "Google rejected the connection. Please try again."],
+      norefresh: ["error", "Google didn't return lasting access. Remove Shopper from your Google account permissions, then reconnect."],
+    };
+    const [kind, message] = messages[result] || [];
+    if (kind === "success") toast.success(message);
+    else if (kind) toast.error(message);
+
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -245,6 +303,58 @@ export default function IntegrationsPage() {
         <div className="card stat"><p className="stat-label">Available</p><p className="stat-value">{CATALOGUE.length}</p></div>
         <div className="card stat"><p className="stat-label">API keys</p><p className="stat-value">{apiKeys.length}</p></div>
       </div>
+
+      <SectionCard
+        title="Google Calendar sync"
+        subtitle="Check your real calendar before offering a time, so you're never double-booked."
+      >
+        {!calendarSync.configured ? (
+          <p className="hint">
+            Google OAuth isn&apos;t configured on the server, so calendar sync is unavailable.
+          </p>
+        ) : (
+          <div className="stack-3">
+            <div className="row-between" style={{ flexWrap: "wrap", gap: "var(--s3)" }}>
+              <div>
+                <p className="small" style={{ fontWeight: 600 }}>
+                  {calendarSync.connected ? "Connected" : "Not connected"}
+                  {calendarSync.connected && (
+                    <span className="badge" style={{ marginLeft: 8 }}>
+                      <Icon name="check" size={11} strokeWidth={3} /> Checking conflicts
+                    </span>
+                  )}
+                </p>
+                <p className="tiny subtle">
+                  {calendarSync.connected
+                    ? "Events in your Google Calendar now hide the overlapping slots on your booking page."
+                    : "Shopper only knows about bookings made here. Connect your calendar so personal events block those times too."}
+                </p>
+              </div>
+
+              {calendarSync.connected ? (
+                <button className="btn btn-sm btn-ghost btn-danger" onClick={disconnectCalendar} disabled={calBusy}>
+                  {calBusy ? <span className="spinner" /> : <Icon name="close" size={13} />} Disconnect
+                </button>
+              ) : (
+                <button className="btn btn-sm" onClick={connectCalendar} disabled={calBusy}>
+                  {calBusy ? <span className="spinner" /> : <Icon name="link" size={13} />} Connect Google Calendar
+                </button>
+              )}
+            </div>
+
+            {calendarSync.needs_reconnect && (
+              <p className="banner banner-warn tiny">
+                Google rejected the saved permission — this usually means access was revoked.
+                Reconnect to resume conflict checking.
+              </p>
+            )}
+
+            <p className="hint">
+              Read-only. Shopper reads busy times only — never event titles, guests or details.
+            </p>
+          </div>
+        )}
+      </SectionCard>
 
       <SectionCard
         title="Calendar subscription"

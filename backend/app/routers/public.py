@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pymongo.database import Database
+from pymongo.errors import DuplicateKeyError
 
 from ..config import settings
 from ..database import get_db, _oid
@@ -195,7 +196,15 @@ def create_booking(
         )
 
     booking_doc = build_booking_document(event_type, payload, start_utc, owner_id, answers)
-    result = db.bookings.insert_one(booking_doc)
+    try:
+        result = db.bookings.insert_one(booking_doc)
+    except DuplicateKeyError:
+        # The unique index caught a simultaneous booking that the check above
+        # could not see. Same outcome for the invitee, just a tighter race.
+        raise HTTPException(
+            status_code=409,
+            detail="That slot was just booked by someone else. Please pick another.",
+        )
     booking = db.bookings.find_one({"_id": result.inserted_id})
     enriched = booking_with_event_type(booking, db)
 
@@ -389,15 +398,18 @@ def reschedule_managed_booking(
     ):
         raise HTTPException(status_code=409, detail="That slot was just taken. Please pick another.")
 
-    db.bookings.update_one(
-        {"_id": booking["_id"]},
-        {"$set": {
-            "start_time": start_utc,
-            "end_time": start_utc + timedelta(minutes=event_type["duration"]),
-            "rescheduled_at": _utcnow(),
-            "rescheduled_by": "guest",
-        }},
-    )
+    try:
+        db.bookings.update_one(
+            {"_id": booking["_id"]},
+            {"$set": {
+                "start_time": start_utc,
+                "end_time": start_utc + timedelta(minutes=event_type["duration"]),
+                "rescheduled_at": _utcnow(),
+                "rescheduled_by": "guest",
+            }},
+        )
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="That slot was just taken. Please pick another.")
     booking = db.bookings.find_one({"_id": booking["_id"]})
     enriched = booking_with_event_type(booking, db)
 

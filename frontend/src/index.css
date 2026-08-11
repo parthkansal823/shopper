@@ -860,6 +860,24 @@ h4 { font-size: 0.875rem; font-weight: 650; letter-spacing: -0.01em; }
 .step-dot.is-complete { background: var(--c-ok); border-color: var(--c-ok); color: var(--c-on-accent); }
 .step-label { font-size: 0.75rem; font-weight: 550; }
 
+/* First-run setup checklist on the dashboard. */
+.steps-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s3); }
+.setup-step {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3); border: 1px solid var(--c-line); border-radius: var(--r-md);
+}
+.setup-mark {
+  width: 20px; height: 20px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border: 1px solid var(--c-line-strong); border-radius: 50%;
+}
+.setup-step.is-done .setup-mark {
+  background: var(--c-ok); border-color: var(--c-ok); color: var(--c-on-accent);
+}
+.setup-step.is-done .setup-label { color: var(--c-ink-3); text-decoration: line-through; }
+.setup-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.setup-label { font-size: 0.8125rem; font-weight: 600; }
+
 /* Bookings grouped under a sticky day heading. */
 .timeline { display: flex; flex-direction: column; gap: var(--s5); }
 .timeline-group-label {

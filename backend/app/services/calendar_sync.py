@@ -129,6 +129,10 @@ def get_busy_ranges(
 
     token = _access_token(db, owner_id)
     if not token:
+        # Cache the empty answer too. Most hosts never connect a calendar, and
+        # without this every slot request re-reads the integrations collection.
+        with _lock:
+            _freebusy_cache[key] = ([], now + _FREEBUSY_TTL_SECONDS)
         return []
 
     try:
