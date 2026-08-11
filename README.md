@@ -1,4 +1,18 @@
-# Shopper
+<h1 align="center">Shopper</h1>
+
+<p align="center">
+  <em>Scheduling without the back-and-forth — publish a booking page, let people pick a slot.</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Nkamra101/shopper/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Nkamra101/shopper/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="tests" src="https://img.shields.io/badge/tests-82%20passing-2ea043">
+  <img alt="python" src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white">
+  <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=000">
+  <img alt="Vite" src="https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white">
+  <img alt="MongoDB" src="https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb&logoColor=white">
+</p>
 
 A scheduling and booking platform in the vein of Calendly or Cal.com. Hosts
 publish booking pages, invitees pick a slot and verify their email, and the
@@ -8,6 +22,17 @@ runs itself.
 - **Frontend**: React 19 + Vite, deployed on Netlify
 - **Backend**: FastAPI + MongoDB, deployed on Render
 - **Database**: MongoDB Atlas
+
+<img src="docs/images/architecture.svg" alt="Shopper architecture: a Netlify frontend and Render backend over MongoDB Atlas, with Google OAuth, the Gmail API, Google Calendar and webhooks as outbound integrations." width="100%">
+
+### Documentation
+
+| Guide | What's in it |
+| :-- | :-- |
+| [Architecture](docs/architecture.md) | Data model, request lifecycle, the slot algorithm, multi-tenancy |
+| [API reference](docs/api-reference.md) | Every endpoint, auth rules, status codes |
+| [Email delivery](docs/email-delivery.md) | The four transports, why SMTP fails in production, troubleshooting |
+| [Operations](docs/operations.md) | Deploying, keeping it awake, migrations, incident checks |
 
 ---
 
@@ -224,6 +249,31 @@ the Google OAuth already configured, needs no third-party account or API key,
 and sends over HTTPS like any other request. The grant is scoped
 `gmail.send` — permission to send and nothing else; it cannot read a message.
 
+##### Gmail without the in-app flow (env var only)
+If you can't reach the admin UI — the usual reason being an OAuth-only account
+and a missing `GOOGLE_CLIENT_SECRET`, which locks you out of your own app — the
+same grant can be minted by hand and supplied as a variable. Nothing to click
+in the app, and still no third-party service:
+
+1. **Google Console → Credentials →** your OAuth client → *Authorised redirect
+   URIs* → add `https://developers.google.com/oauthplayground`.
+2. Open **https://developers.google.com/oauthplayground**, click the **gear**
+   (top right) → tick **Use your own OAuth credentials** → paste the client ID
+   and secret.
+3. In the left-hand scope box paste
+   `https://www.googleapis.com/auth/gmail.send` → **Authorise APIs** → sign in
+   as the mailbox you want to send from and approve.
+4. Click **Exchange authorization code for tokens** and copy the **refresh
+   token** (it starts with `1//`).
+5. Render → **Environment** → add `GMAIL_REFRESH_TOKEN=1//…` → Save.
+
+`GMAIL_SENDER` is optional and defaults to `SMTP_FROM`. Remove the playground
+redirect URI afterwards if you like — the refresh token keeps working, because
+a redirect URI is only used while obtaining one.
+
+A grant connected through the UI takes precedence over this variable, so the
+button still wins if both exist.
+
 The connected mailbox becomes the sender, and its address overwrites the `From`
 header, because Gmail refuses to send as anyone else. The grant is stored once
 in `app_settings` and applies app-wide, exactly as the single `SMTP_USER` did —
@@ -257,10 +307,10 @@ your own account.
 than read from configuration, so a Gmail account connected through the UI shows
 up there immediately. That is the quickest confirmation the new path is live.
 
-Precedence is: a connected Gmail account, then `SENDGRID_API_KEY`, then
-`RESEND_API_KEY`, then `SMTP_*`. Connecting Gmail therefore takes over without
-removing any existing SMTP settings, and disconnecting falls straight back to
-them.
+Precedence is: a Gmail grant (connected in the UI, else `GMAIL_REFRESH_TOKEN`),
+then `SENDGRID_API_KEY`, then `RESEND_API_KEY`, then `SMTP_*`. Enabling any of
+them takes over without removing existing SMTP settings, and removing it falls
+straight back to them.
 
 Interactive API docs are at `/docs` — disabled automatically in production.
 

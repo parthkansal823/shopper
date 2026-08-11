@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 470" width="900" height="470" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="Shopper architecture: Netlify frontend and Render backend over MongoDB Atlas, with Google and SMTP as outbound integrations.">
+  <title>Shopper architecture</title>
+
+  <!-- Colours are mid-tones chosen to hold contrast on both GitHub themes,
+       since GitHub strips prefers-color-scheme from embedded SVGs. -->
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8b8b96"/>
+    </marker>
+    <style>
+      .lbl   { font-size: 13px; font-weight: 650; fill: #e8e8ea; }
+      .sub   { font-size: 11px; fill: #a9a9b4; }
+      .tag   { font-size: 10px; font-weight: 600; fill: #7f7f8c; letter-spacing: .08em; }
+      .edge  { stroke: #8b8b96; stroke-width: 1.4; fill: none; marker-end: url(#arw); }
+      .edgel { font-size: 10.5px; fill: #9a9aa6; }
+      .box   { fill: #1b1b20; stroke: #34343d; stroke-width: 1.2; rx: 10; }
+      .zone  { fill: none; stroke: #2c2c34; stroke-width: 1.2; stroke-dasharray: 5 4; rx: 12; }
+    </style>
+  </defs>
+
+  <rect width="900" height="470" fill="#101014"/>
+
+  <!-- ── Browser ─────────────────────────────────────────── -->
+  <rect class="zone" x="24" y="28" width="240" height="150"/>
+  <text class="tag" x="40" y="52">BROWSER</text>
+  <rect class="box" x="44" y="64" width="200" height="44"/>
+  <text class="lbl" x="60" y="83">Host dashboard</text>
+  <text class="sub" x="60" y="99">event types · availability</text>
+  <rect class="box" x="44" y="116" width="200" height="44"/>
+  <text class="lbl" x="60" y="135">Public booking page</text>
+  <text class="sub" x="60" y="151">/book/&lt;slug&gt;</text>
+
+  <!-- ── Netlify ─────────────────────────────────────────── -->
+  <rect class="zone" x="24" y="210" width="240" height="106"/>
+  <text class="tag" x="40" y="234">NETLIFY</text>
+  <rect class="box" x="44" y="246" width="200" height="52"/>
+  <text class="lbl" x="60" y="266">React 19 + Vite</text>
+  <text class="sub" x="60" y="282">static build · SPA redirect</text>
+
+  <!-- ── Render ──────────────────────────────────────────── -->
+  <rect class="zone" x="330" y="28" width="268" height="288"/>
+  <text class="tag" x="346" y="52">RENDER</text>
+
+  <rect class="box" x="350" y="64" width="228" height="46"/>
+  <text class="lbl" x="366" y="83">FastAPI · routers</text>
+  <text class="sub" x="366" y="99">auth · public · bookings · calendar</text>
+
+  <rect class="box" x="350" y="120" width="228" height="46"/>
+  <text class="lbl" x="366" y="139">booking_service</text>
+  <text class="sub" x="366" y="155">slot generation · conflicts</text>
+
+  <rect class="box" x="350" y="176" width="228" height="46"/>
+  <text class="lbl" x="366" y="195">email · gmail · calendar_sync</text>
+  <text class="sub" x="366" y="211">outbound integrations</text>
+
+  <rect class="box" x="350" y="232" width="228" height="46"/>
+  <text class="lbl" x="366" y="251">reminder scheduler</text>
+  <text class="sub" x="366" y="267">in-process loop · polls 60s</text>
+
+  <!-- ── Atlas ───────────────────────────────────────────── -->
+  <rect class="zone" x="330" y="348" width="268" height="96"/>
+  <text class="tag" x="346" y="372">MONGODB ATLAS</text>
+  <rect class="box" x="350" y="384" width="228" height="44"/>
+  <text class="lbl" x="366" y="403">M0 · naive UTC</text>
+  <text class="sub" x="366" y="419">every doc carries owner_id</text>
+
+  <!-- ── External ────────────────────────────────────────── -->
+  <rect class="zone" x="664" y="28" width="212" height="288"/>
+  <text class="tag" x="680" y="52">EXTERNAL</text>
+
+  <rect class="box" x="684" y="64" width="172" height="46"/>
+  <text class="lbl" x="700" y="83">Google OAuth</text>
+  <text class="sub" x="700" y="99">sign-in · 3 grants</text>
+
+  <rect class="box" x="684" y="120" width="172" height="46"/>
+  <text class="lbl" x="700" y="139">Gmail API</text>
+  <text class="sub" x="700" y="155">sends over HTTPS</text>
+
+  <rect class="box" x="684" y="176" width="172" height="46"/>
+  <text class="lbl" x="700" y="195">Google Calendar</text>
+  <text class="sub" x="700" y="211">freeBusy · conflicts</text>
+
+  <rect class="box" x="684" y="232" width="172" height="46"/>
+  <text class="lbl" x="700" y="251">Webhooks</text>
+  <text class="sub" x="700" y="267">Slack · Discord · Teams</text>
+
+  <!-- ── Edges ───────────────────────────────────────────── -->
+  <path class="edge" d="M144 178 L144 240"/>
+  <text class="edgel" x="152" y="212">loads app</text>
+
+  <path class="edge" d="M244 272 C 300 272, 300 100, 344 92"/>
+  <text class="edgel" x="258" y="196">HTTPS · JSON</text>
+
+  <path class="edge" d="M464 278 L464 378"/>
+  <text class="edgel" x="472" y="332">pymongo</text>
+
+  <path class="edge" d="M578 190 L678 152"/>
+  <path class="edge" d="M578 196 L678 200"/>
+  <path class="edge" d="M578 202 L678 252"/>
+  <path class="edge" d="M578 82 L678 84"/>
+
+  <!-- Footnote: the one thing that surprises people. -->
+  <text class="sub" x="24" y="352">Render blocks outbound SMTP,</text>
+  <text class="sub" x="24" y="368">so mail leaves via the Gmail API</text>
+  <text class="sub" x="24" y="384">over HTTPS — not port 587.</text>
+  <text class="sub" x="24" y="412">The scheduler runs in-process,</text>
+  <text class="sub" x="24" y="428">so the service must stay awake</text>
+  <text class="sub" x="24" y="444">(UptimeRobot pings /health).</text>
+</svg>
