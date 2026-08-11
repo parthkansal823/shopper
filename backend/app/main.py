@@ -129,7 +129,7 @@ def root():
     return {"name": settings.APP_NAME, "env": settings.APP_ENV}
 
 
-@app.get("/health", tags=["meta"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["meta"])
 def health_check():
     """Liveness probe. Also the endpoint the keep-alive cron pings."""
     db_ok = True
