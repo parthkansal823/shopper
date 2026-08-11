@@ -395,6 +395,11 @@ def _deliver(msg: EmailMessage) -> None:
             server.send_message(msg)
 
 
+# Every HTTPS provider _deliver_http knows how to talk to. Kept beside the
+# implementation so adding one can't leave the transport router behind.
+_HTTP_PROVIDERS = {"sendgrid", "resend"}
+
+
 def _deliver_http(msg: EmailMessage) -> None:
     """Send over a provider's HTTPS API. Raises on failure.
 
@@ -410,15 +415,19 @@ def _deliver_http(msg: EmailMessage) -> None:
     html_part = msg.get_body(preferencelist=("html",))
     html_body = html_part.get_content() if html_part else f"<pre>{escape(text_body)}</pre>"
 
-    if provider == "brevo":
-        url = "https://api.brevo.com/v3/smtp/email"
-        headers = {"api-key": settings.BREVO_API_KEY, "accept": "application/json"}
+    if provider == "sendgrid":
+        url = "https://api.sendgrid.com/v3/mail/send"
+        headers = {"Authorization": f"Bearer {settings.SENDGRID_API_KEY}"}
         payload = {
-            "sender": {"name": settings.SMTP_FROM_NAME, "email": from_addr},
-            "to": [{"email": to_addr}],
+            "personalizations": [{"to": [{"email": to_addr}]}],
+            "from": {"email": from_addr, "name": settings.SMTP_FROM_NAME},
             "subject": subject,
-            "htmlContent": html_body,
-            "textContent": text_body,
+            # SendGrid requires the plain-text part first; it treats the last
+            # entry as the preferred one.
+            "content": [
+                {"type": "text/plain", "value": text_body},
+                {"type": "text/html", "value": html_body},
+            ],
         }
     elif provider == "resend":
         url = "https://api.resend.com/emails"
@@ -465,7 +474,7 @@ def _transport_for(name: str):
         from ..database import get_db
 
         return lambda msg: gmail_sender.send(get_db(), msg)
-    if name in {"brevo", "resend"}:
+    if name in _HTTP_PROVIDERS:
         return _deliver_http
     return _deliver
 
@@ -522,7 +531,7 @@ def diagnose_delivery(recipient: str) -> dict:
         report["user_set"] = True
         report["pass_set"] = True
         report["from"] = gmail_sender.sender_address(get_db()) or report["from"]
-    elif transport in {"brevo", "resend"}:
+    elif transport in _HTTP_PROVIDERS:
         report["host"] = f"{transport} HTTPS API"
         report["port"] = 443
         report["pass_set"] = True

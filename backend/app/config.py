@@ -70,7 +70,7 @@ class Settings:
     # precedence over SMTP_*; SMTP_FROM / SMTP_FROM_NAME still supply the
     # sender identity, and that address must be a verified sender with the
     # provider or the send is rejected.
-    BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
+    SENDGRID_API_KEY: str = os.getenv("SENDGRID_API_KEY", "")
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
 
     # ----- Auth / JWT -----
@@ -148,8 +148,8 @@ class Settings:
         block outbound SMTP ports (25/465/587) to curb spam, and an HTTPS API
         goes out over 443 like any other request.
         """
-        if self.BREVO_API_KEY:
-            return "brevo"
+        if self.SENDGRID_API_KEY:
+            return "sendgrid"
         if self.RESEND_API_KEY:
             return "resend"
         return ""

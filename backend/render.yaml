@@ -102,7 +102,7 @@ services:
       # Render blocks outbound SMTP on the free tier, so SMTP_* alone will time
       # out here even though it works locally. Set one of these to send over
       # 443 instead; either takes precedence over SMTP_*.
-      - key: BREVO_API_KEY
+      - key: SENDGRID_API_KEY
         sync: false
       - key: RESEND_API_KEY
         sync: false

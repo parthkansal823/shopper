@@ -240,23 +240,24 @@ https://<your-backend>.onrender.com/api/auth/google/gmail/callback
 either takes precedence over `SMTP_*` automatically:
 
 ```
-BREVO_API_KEY=xkeysib-…      # or
+SENDGRID_API_KEY=SG.…      # or
 RESEND_API_KEY=re_…
 ```
 
 `SMTP_FROM` and `SMTP_FROM_NAME` still supply the sender, and **that address
 must be a verified sender with the provider** or the API rejects the send —
-which the test button will tell you verbatim. Note the free tiers differ in a
-way that matters for a booking app: Brevo sends to any recipient once the
-sender address is verified, while Resend needs a **verified domain** before it
-will mail anyone other than your own account.
+which the test button reports verbatim. The free tiers differ in a way that
+decides which is usable for a booking app: **SendGrid** needs only a *single
+verified sender*, so a plain Gmail address works and it will mail any invitee;
+**Resend** needs a **domain you own** before it will mail anyone other than
+your own account.
 
-`/health` reports the transport actually in use — `gmail`, `brevo`, `resend`,
-`smtp`, `console` or `disabled` — resolved at request time rather than read
-from configuration, so a Gmail account connected through the UI shows up there
-immediately. That is the quickest confirmation the new path is live.
+`/health` reports the transport actually in use — `gmail`, `sendgrid`,
+`resend`, `smtp`, `console` or `disabled` — resolved at request time rather
+than read from configuration, so a Gmail account connected through the UI shows
+up there immediately. That is the quickest confirmation the new path is live.
 
-Precedence is: a connected Gmail account, then `BREVO_API_KEY`, then
+Precedence is: a connected Gmail account, then `SENDGRID_API_KEY`, then
 `RESEND_API_KEY`, then `SMTP_*`. Connecting Gmail therefore takes over without
 removing any existing SMTP settings, and disconnecting falls straight back to
 them.
