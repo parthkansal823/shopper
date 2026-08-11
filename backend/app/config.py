@@ -73,6 +73,18 @@ class Settings:
     SENDGRID_API_KEY: str = os.getenv("SENDGRID_API_KEY", "")
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
 
+    # ----- Gmail sending without the in-app consent flow -----
+    # A refresh token minted once in Google's OAuth Playground (scope
+    # gmail.send) using this project's own client id/secret. Set it and the
+    # server sends through Gmail over HTTPS with nothing to click in the app —
+    # useful when the host can't reach the admin UI, or on a deployment where
+    # completing an OAuth redirect is awkward. A grant connected through the UI
+    # takes precedence over this.
+    GMAIL_REFRESH_TOKEN: str = os.getenv("GMAIL_REFRESH_TOKEN", "")
+    # The mailbox that token belongs to. Defaults to SMTP_FROM/SMTP_USER, which
+    # is normally the same Gmail address.
+    GMAIL_SENDER: str = os.getenv("GMAIL_SENDER", "")
+
     # ----- Auth / JWT -----
     SECRET_KEY: str = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
     ALGORITHM: str = "HS256"

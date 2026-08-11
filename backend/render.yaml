@@ -102,6 +102,11 @@ services:
       # Render blocks outbound SMTP on the free tier, so SMTP_* alone will time
       # out here even though it works locally. Set one of these to send over
       # 443 instead; either takes precedence over SMTP_*.
+      # Simplest option that needs no third-party account: mint a refresh
+      # token once in Google's OAuth Playground (scope gmail.send) with this
+      # project's own client id/secret, and paste it here. See the README.
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
       - key: SENDGRID_API_KEY
         sync: false
       - key: RESEND_API_KEY

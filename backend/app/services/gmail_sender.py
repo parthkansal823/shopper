@@ -60,14 +60,40 @@ def get_connection(db: Database) -> dict | None:
     return doc
 
 
-def is_connected(db: Database) -> bool:
+def _env_grant() -> dict | None:
+    """A refresh token supplied by configuration rather than the UI.
+
+    Minted once in Google's OAuth Playground, this makes Gmail sending a plain
+    environment variable — no consent redirect to complete, and no need to be
+    able to sign in to the app at all.
+    """
+    if not settings.GMAIL_REFRESH_TOKEN:
+        return None
+    return {
+        "refresh_token": settings.GMAIL_REFRESH_TOKEN,
+        "email": settings.GMAIL_SENDER or settings.SMTP_FROM or settings.SMTP_USER,
+        "source": "env",
+    }
+
+
+def resolve_grant(db: Database) -> dict | None:
+    """The grant actually in force: a UI connection first, else configuration.
+
+    The UI wins so that connecting (or disconnecting) in the app is never
+    silently overridden by a stale environment variable.
+    """
     doc = get_connection(db)
-    return bool(doc and doc.get("refresh_token") and not doc.get("invalid"))
+    if doc and doc.get("refresh_token") and not doc.get("invalid"):
+        return doc
+    return _env_grant()
+
+
+def is_connected(db: Database) -> bool:
+    return resolve_grant(db) is not None
 
 
 def sender_address(db: Database) -> str:
-    doc = get_connection(db)
-    return (doc or {}).get("email", "")
+    return (resolve_grant(db) or {}).get("email", "")
 
 
 def save_connection(db: Database, refresh_token: str, email: str) -> None:
@@ -99,8 +125,8 @@ def _access_token(db: Database) -> str | None:
         if _token_cache and _token_cache[1] > now:
             return _token_cache[0]
 
-    doc = get_connection(db)
-    refresh_token = (doc or {}).get("refresh_token")
+    grant = resolve_grant(db)
+    refresh_token = (grant or {}).get("refresh_token")
     if not refresh_token:
         return None
 
@@ -115,7 +141,9 @@ def _access_token(db: Database) -> str | None:
         timeout=15.0,
     )
     if response.status_code != 200:
-        if response.status_code in (400, 401):
+        # Only a stored grant can be flagged; an env-supplied token isn't ours
+        # to mark, and doing so would make the DB row shadow a valid variable.
+        if response.status_code in (400, 401) and grant.get("source") != "env":
             # A revoked grant never recovers; flag it so the UI can say
             # "reconnect" instead of silently never sending again.
             db.app_settings.update_one(
