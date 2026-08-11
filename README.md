@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Nkamra101/shopper/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Nkamra101/shopper/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/parthkansal823/shopper/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/parthkansal823/shopper/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="tests" src="https://img.shields.io/badge/tests-82%20passing-2ea043">
   <img alt="python" src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white">
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white">
