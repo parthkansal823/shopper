@@ -85,6 +85,13 @@ services:
       - key: SMTP_RETRY_COUNT
         value: "1"
 
+      # Use when the platform blocks outbound SMTP; sends over 443 instead and
+      # takes precedence over SMTP_*. Only one is needed.
+      - key: BREVO_API_KEY
+        secret: brevo-api-key
+      - key: RESEND_API_KEY
+        secret: resend-api-key
+
       - key: REMINDER_SCHEDULER_ENABLED
         value: "true"
       - key: REMINDER_POLL_SECONDS

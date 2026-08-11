@@ -217,9 +217,23 @@ curl -X POST https://<your-backend>.onrender.com/api/auth/email/test \
 ```
 
 If the port is blocked, no amount of SMTP configuration will fix it — the mail
-has to leave over HTTPS instead. Switch to a provider's HTTP API (Brevo,
-SendGrid and Mailgun all offer one on a free tier); their SMTP endpoints are
-blocked by the same rule, so the API is the part that matters.
+has to leave over HTTPS instead. Set **one** of these and redeploy; either
+takes precedence over `SMTP_*` automatically, and nothing else changes:
+
+```
+BREVO_API_KEY=xkeysib-…      # or
+RESEND_API_KEY=re_…
+```
+
+`SMTP_FROM` and `SMTP_FROM_NAME` still supply the sender, and **that address
+must be a verified sender with the provider** or the API rejects the send —
+which the test button will tell you verbatim. Note the free tiers differ in a
+way that matters for a booking app: Brevo sends to any recipient once the
+sender address is verified, while Resend needs a **verified domain** before it
+will mail anyone other than your own account.
+
+`/health` then reports `"email_mode":"brevo"` (or `"resend"`) instead of
+`"smtp"`, which is the quickest confirmation the new path is live.
 
 Interactive API docs are at `/docs` — disabled automatically in production.
 

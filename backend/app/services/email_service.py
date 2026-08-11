@@ -22,6 +22,8 @@ from email.utils import formataddr
 from html import escape
 from typing import Optional
 
+import httpx
+
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -392,12 +394,59 @@ def _deliver(msg: EmailMessage) -> None:
             server.send_message(msg)
 
 
+def _deliver_http(msg: EmailMessage) -> None:
+    """Send over a provider's HTTPS API. Raises on failure.
+
+    Port 443 rather than an SMTP port, which is what makes this work on hosts
+    that block outbound mail. The message is already built, so the parts are
+    pulled back out of it rather than threading a second shape through.
+    """
+    provider = settings.http_email_provider
+    from_addr = settings.SMTP_FROM or settings.SMTP_USER
+    to_addr = msg["To"]
+    subject = msg["Subject"]
+    text_body = msg.get_body(preferencelist=("plain",)).get_content()
+    html_part = msg.get_body(preferencelist=("html",))
+    html_body = html_part.get_content() if html_part else f"<pre>{escape(text_body)}</pre>"
+
+    if provider == "brevo":
+        url = "https://api.brevo.com/v3/smtp/email"
+        headers = {"api-key": settings.BREVO_API_KEY, "accept": "application/json"}
+        payload = {
+            "sender": {"name": settings.SMTP_FROM_NAME, "email": from_addr},
+            "to": [{"email": to_addr}],
+            "subject": subject,
+            "htmlContent": html_body,
+            "textContent": text_body,
+        }
+    elif provider == "resend":
+        url = "https://api.resend.com/emails"
+        headers = {"Authorization": f"Bearer {settings.RESEND_API_KEY}"}
+        payload = {
+            "from": formataddr((settings.SMTP_FROM_NAME, from_addr)),
+            "to": [to_addr],
+            "subject": subject,
+            "html": html_body,
+            "text": text_body,
+        }
+    else:
+        raise RuntimeError(f"Unknown HTTP email provider: {provider!r}")
+
+    response = httpx.post(url, headers=headers, json=payload, timeout=20.0)
+    if response.status_code >= 300:
+        # The body carries the actionable part (unverified sender, bad key).
+        raise RuntimeError(
+            f"{provider} API returned HTTP {response.status_code}: {response.text[:300]}"
+        )
+
+
 def _send_with_retry(msg: EmailMessage) -> bool:
     """Returns True if delivered, False otherwise. Never raises."""
     attempts = max(1, settings.SMTP_RETRY_COUNT + 1)
+    send = _deliver_http if settings.http_email_provider else _deliver
     for attempt in range(1, attempts + 1):
         try:
-            _deliver(msg)
+            send(msg)
             logger.info("Email delivered to %s (attempt %d)", msg["To"], attempt)
             return True
         except Exception as exc:  # noqa: BLE001
@@ -434,10 +483,14 @@ def diagnose_delivery(recipient: str) -> dict:
         "hint": None,
     }
 
-    if settings.email_delivery_mode != "smtp":
+    if settings.http_email_provider:
+        report["host"] = f"{settings.http_email_provider} HTTPS API"
+        report["port"] = 443
+        report["pass_set"] = True
+    elif settings.email_delivery_mode != "smtp":
         report["hint"] = (
-            "Not in SMTP mode — one of SMTP_HOST/SMTP_USER/SMTP_PASS is blank, "
-            "so mail is only logged."
+            "Not sending — no HTTPS provider key, and one of "
+            "SMTP_HOST/SMTP_USER/SMTP_PASS is blank, so mail is only logged."
         )
         return report
 
@@ -453,7 +506,7 @@ def diagnose_delivery(recipient: str) -> dict:
     )
 
     try:
-        _deliver(msg)
+        (_deliver_http if settings.http_email_provider else _deliver)(msg)
         report["delivered"] = True
         return report
     except Exception as exc:  # noqa: BLE001

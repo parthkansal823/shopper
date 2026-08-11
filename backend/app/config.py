@@ -65,6 +65,14 @@ class Settings:
     SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "10"))
     SMTP_RETRY_COUNT: int = int(os.getenv("SMTP_RETRY_COUNT", "1"))
 
+    # ----- HTTPS email APIs -----
+    # Set one of these when the host blocks outbound SMTP. Either takes
+    # precedence over SMTP_*; SMTP_FROM / SMTP_FROM_NAME still supply the
+    # sender identity, and that address must be a verified sender with the
+    # provider or the send is rejected.
+    BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
+
     # ----- Auth / JWT -----
     SECRET_KEY: str = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
     ALGORITHM: str = "HS256"
@@ -114,7 +122,23 @@ class Settings:
         return bool(self.SMTP_HOST and self.SMTP_USER and self.SMTP_PASS)
 
     @property
+    def http_email_provider(self) -> str:
+        """Which HTTPS email API is configured, if any.
+
+        Preferred over SMTP wherever both are set: hosting providers commonly
+        block outbound SMTP ports (25/465/587) to curb spam, and an HTTPS API
+        goes out over 443 like any other request.
+        """
+        if self.BREVO_API_KEY:
+            return "brevo"
+        if self.RESEND_API_KEY:
+            return "resend"
+        return ""
+
+    @property
     def email_delivery_mode(self) -> str:
+        if self.http_email_provider:
+            return self.http_email_provider
         if self.smtp_configured:
             return "smtp"
         if not self.is_production:
