@@ -39,13 +39,17 @@ services:
         value: shopper_prod
 
       # ----- Public URLs -----
-      # FRONTEND_URL builds the invitee reschedule/cancel links that go out in
-      # emails; API_PUBLIC_URL builds the iCal subscription URL. Both must be
-      # the real public origins, with no trailing slash.
+      # API_PUBLIC_URL is deliberately NOT set here. Render injects
+      # RENDER_EXTERNAL_URL with this service's real public URL, and config.py
+      # falls back to it — so the iCal feed and all three OAuth callbacks stay
+      # correct even if the service is recreated on a different hostname.
+      # Pinning it here would reintroduce that coupling; set it only when the
+      # API sits behind a custom domain Render doesn't know about.
+      #
+      # The frontend's origin can't be derived, so these two do need real
+      # values — the Netlify site, no trailing slash.
       - key: FRONTEND_URL
         value: https://shopper-ap823.netlify.app
-      - key: API_PUBLIC_URL
-        value: https://shopper-backend-mqcf.onrender.com
       - key: CORS_ORIGINS
         value: https://shopper-ap823.netlify.app
 
@@ -68,12 +72,13 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-      - key: GOOGLE_REDIRECT_URI
-        value: https://shopper-backend-mqcf.onrender.com/api/auth/google/callback
-      - key: GOOGLE_CALENDAR_REDIRECT_URI
-        value: https://shopper-backend-mqcf.onrender.com/api/auth/google/calendar/callback
-      - key: GOOGLE_GMAIL_REDIRECT_URI
-        value: https://shopper-backend-mqcf.onrender.com/api/auth/google/gmail/callback
+      # The three callbacks are derived from API_PUBLIC_URL (and so from
+      # RENDER_EXTERNAL_URL) — nothing to set here. Whatever hostname Render
+      # assigns, the server sends Google a matching redirect_uri. Register all
+      # three in the Google console:
+      #   <service-url>/api/auth/google/callback
+      #   <service-url>/api/auth/google/calendar/callback
+      #   <service-url>/api/auth/google/gmail/callback
 
       # ----- SMTP (required for OTP and notification email) -----
       - key: SMTP_HOST

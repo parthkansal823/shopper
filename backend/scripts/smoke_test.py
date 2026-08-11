@@ -33,8 +33,10 @@ os.environ.update({
     "FRONTEND_URL": "http://localhost:5173",
 })
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__))))
-sys.path.insert(0, r"d:\Projects\Projects_With_Niyati\Shopper\shopper\backend")
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+# The backend package root, resolved from this file rather than hard-coded, so
+# the suite runs on any machine and in CI — not just where it was written.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from fastapi.testclient import TestClient  # noqa: E402
 from pymongo import MongoClient  # noqa: E402

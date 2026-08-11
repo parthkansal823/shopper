@@ -333,9 +333,14 @@ Deploy from `backend/render.yaml`, then fill in the secrets marked
 | `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | Gmail address + **App Password** |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional |
 
-Then set these to your real URLs (no trailing slash):
-`FRONTEND_URL`, `API_PUBLIC_URL`, `CORS_ORIGINS`, `GOOGLE_REDIRECT_URI`,
-`GOOGLE_CALENDAR_REDIRECT_URI`.
+Then set the two that point at the **frontend**, since nothing can derive
+them (no trailing slash): `FRONTEND_URL` and `CORS_ORIGINS`.
+
+`API_PUBLIC_URL` and all three OAuth callbacks are **not** set by hand. Render
+injects `RENDER_EXTERNAL_URL` with the service's real public URL and the config
+falls back to it, so the iCal feed and every `redirect_uri` stay correct even if
+the service is recreated on a different hostname. Set `API_PUBLIC_URL`
+explicitly only behind a custom domain Render doesn't know about.
 
 The app **refuses to start in production** if `SECRET_KEY` is missing, default
 or under 32 characters, if `MONGODB_URI` points at localhost, or if

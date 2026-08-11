@@ -87,31 +87,44 @@ class Settings:
     RATE_LIMIT_OTP: int = int(os.getenv("RATE_LIMIT_OTP", "8"))
     RATE_LIMIT_OTP_WINDOW: int = int(os.getenv("RATE_LIMIT_OTP_WINDOW", "3600"))
 
-    # ----- Google OAuth -----
-    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
-    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
-    GOOGLE_REDIRECT_URI: str = os.getenv(
-        "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback"
-    )
-    # Calendar access is a separate grant from sign-in: it needs a wider scope
-    # and a refresh token, and hosts should be able to sign in without handing
-    # over their calendar. Register this URI in the Google console too.
-    GOOGLE_CALENDAR_REDIRECT_URI: str = os.getenv(
-        "GOOGLE_CALENDAR_REDIRECT_URI",
-        "http://localhost:8000/api/auth/google/calendar/callback",
-    )
-    # Sending mail through Gmail is a third, separate grant (scope gmail.send).
-    # Register this callback in the Google console alongside the other two.
-    GOOGLE_GMAIL_REDIRECT_URI: str = os.getenv(
-        "GOOGLE_GMAIL_REDIRECT_URI",
-        "http://localhost:8000/api/auth/google/gmail/callback",
-    )
-
     # ----- Public URLs -----
     # FRONTEND_URL builds the invitee's manage/reschedule links; API_PUBLIC_URL
-    # builds the iCal subscription URL. Both must be reachable from outside.
+    # builds the iCal subscription URL and every OAuth callback below. Both must
+    # be reachable from outside.
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
-    API_PUBLIC_URL: str = os.getenv("API_PUBLIC_URL", "http://localhost:8000")
+    # Render injects RENDER_EXTERNAL_URL with the service's real public URL, so
+    # fall back to it before localhost. That makes every OAuth callback and the
+    # iCal feed URL correct on a fresh deploy with nothing configured by hand —
+    # the failure it prevents is silent, because a localhost callback looks fine
+    # in the logs and only dies at Google's redirect_uri check.
+    API_PUBLIC_URL: str = (
+        os.getenv("API_PUBLIC_URL")
+        or os.getenv("RENDER_EXTERNAL_URL")
+        or "http://localhost:8000"
+    )
+
+    # ----- Google OAuth -----
+    # Three separate grants — signing in, reading a calendar, sending mail — so
+    # a host can sign in without handing over their mailbox. Each needs its own
+    # callback registered in the Google console.
+    #
+    # The defaults are derived from API_PUBLIC_URL rather than hard-coded to
+    # localhost. A literal localhost default is silently wrong in production:
+    # the server sends Google a localhost redirect_uri and every attempt dies
+    # with redirect_uri_mismatch, no matter what is registered. Deriving them
+    # means a deployment that sets API_PUBLIC_URL is correct by default, and
+    # the explicit variables remain available to override.
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "") or (
+        f"{API_PUBLIC_URL.rstrip('/')}/api/auth/google/callback"
+    )
+    GOOGLE_CALENDAR_REDIRECT_URI: str = os.getenv("GOOGLE_CALENDAR_REDIRECT_URI", "") or (
+        f"{API_PUBLIC_URL.rstrip('/')}/api/auth/google/calendar/callback"
+    )
+    GOOGLE_GMAIL_REDIRECT_URI: str = os.getenv("GOOGLE_GMAIL_REDIRECT_URI", "") or (
+        f"{API_PUBLIC_URL.rstrip('/')}/api/auth/google/gmail/callback"
+    )
 
     # ----- OTP -----
     OTP_TTL_SECONDS: int = int(os.getenv("OTP_TTL_SECONDS", "600"))
