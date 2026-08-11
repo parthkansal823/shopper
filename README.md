@@ -15,7 +15,11 @@ runs itself.
 
 ### For the host
 - **Event types** — multiple meeting templates with their own duration, slug,
-  buffer, minimum notice and booking horizon.
+  buffer, minimum notice, booking horizon and an optional **daily limit** that
+  closes a day once it has taken enough bookings.
+- **Google Calendar conflict checking** — connect a calendar and events already
+  in it hide the overlapping slots, so Shopper can't book over a meeting it
+  didn't create. Read-only, and opt-in separately from signing in.
 - **Custom booking questions** — up to ten per event type (short text, long
   text, dropdown, checkbox, phone), required or optional. Answers are stored
   with the booking and included in the CSV export and calendar feed.
@@ -32,13 +36,17 @@ runs itself.
 - **Integrations** — Slack, Discord, Teams and generic webhooks.
 - **Analytics** — booking volume, popular slots, conversion.
 - **API keys** — `sk_live_…` bearer tokens for the same endpoints as the UI.
+- **First-run checklist** — the dashboard names what is still missing until the
+  booking page can actually take a booking, and hides itself once it can.
 
 ### For the invitee
 - **Public booking page** at `/book/<slug>` with a live calendar; days with no
   availability are greyed out before they click.
 - **Timezone picker** — slots render in whatever timezone the invitee chooses,
   defaulting to their browser's. Booking is stored in UTC either way.
-- **Email verification** — a 6-digit OTP before a booking is confirmed.
+- **Email verification** — a 6-digit OTP, asked for on the final confirm step
+  rather than mid-form, so the invitee fills everything in and is interrupted
+  once. The server still refuses any booking without a valid token.
 - **Self-service management** at `/manage/<token>` — reschedule or cancel from
   a link in the confirmation email, with no account and no email to the host.
 
@@ -69,6 +77,38 @@ settings) is what working hours are interpreted in. Slots are returned with an
 unambiguous `start_utc` so the browser can render them in any timezone, and
 bookings are normalised back to UTC on the way in.
 
+### Slot generation reads once per range, not once per day
+`generate_slots` needs four things — the host's timezone, their weekly rules,
+their blockouts and their existing bookings — and **none of them vary by day**.
+Calling it in a loop therefore re-read all four on every iteration, which made a
+month view cost roughly 120 round trips to Atlas.
+
+`_load_range` reads each collection once for the whole span and
+`generate_available_days` walks the days in memory, so a month costs 5 queries
+instead of ~154. When adding anything that needs another collection, read it in
+`_load_range` — putting a query inside `_slots_for_day` silently reintroduces
+the N+1.
+
+### What stops a slot being double-booked
+Four independent layers, because each one alone has a hole:
+
+1. **Other Shopper bookings** — busy times span *every* event type the host
+   offers, so a 09:00 "Intro Call" also blocks 09:00 on "Deep Dive".
+2. **The host's external calendar** — `services/calendar_sync.py` asks Google's
+   freeBusy endpoint for the same span. This **fails open**: if Google is
+   unreachable or the grant was revoked, the host keeps their availability
+   rather than having the booking page go dark. That trades a possible double
+   book for uptime, so every failure is logged, and a rejected grant marks the
+   integration `invalid` so the host is told to reconnect.
+3. **A daily cap** — `max_bookings_per_day` (0 = unlimited) closes the day once
+   reached. Counted in the *host's* timezone, since that is the day the cap is
+   about, and per event type, so one link filling up doesn't close another.
+4. **A unique index** — `uniq_confirmed_slot` on `(owner_id, start_time)`,
+   partial on `status: "confirmed"`. The application checks for a conflict
+   before inserting, but two simultaneous requests can both pass that check;
+   only the database can settle the race, and the loser gets a 409. It is
+   partial so a cancelled booking stops reserving the slot.
+
 ### Reminder scheduler
 `app/services/scheduler.py` polls every 60 seconds for bookings entering a
 workflow's reminder window. Delivery is at-most-once per (booking, workflow),
@@ -88,8 +128,8 @@ backend/app/
   schemas.py        Pydantic request/response models
   routers/          auth, event_types, availability, bookings, blockouts,
                     public, otp, integrations, calendar, workflows
-  services/         booking_service (slots), email, otp, webhooks,
-                    workflows, scheduler, rate_limit
+  services/         booking_service (slots), calendar_sync (Google freeBusy),
+                    email, otp, webhooks, workflows, scheduler, rate_limit
   scripts/          smoke_test.py
 frontend/src/
   pages/            route-level components
@@ -128,6 +168,40 @@ the booking OTP is shown in the UI so you can complete a booking end to end.
 
 Interactive API docs are at `/docs` — disabled automatically in production.
 
+**An empty database looks broken.** With no availability and no event types,
+every page is an empty panel and `/book/<slug>` 404s — nothing is wrong. Either
+follow the dashboard's setup checklist, or seed demo data (two event types, a
+week of availability with a lunch break, two sample bookings):
+
+```bash
+cd backend
+python -c "from app.database import get_db; from app.seed import seed_database; seed_database(get_db())"
+```
+
+It is a no-op once any event type exists, so it can't overwrite real data.
+
+### `localhost` and `127.0.0.1` are not interchangeable here
+On Windows, `localhost` usually resolves to IPv6 `::1` first while uvicorn binds
+IPv4 by default, and Vite binds IPv6. Mixing them produces failures that look
+like application bugs but are not:
+
+| Symptom | Cause |
+| :-- | :-- |
+| `{"detail":"Not Found"}` on a route you know exists | the request reached a *different* server on that port |
+| Frontend "refused to connect" on `127.0.0.1:5173` | Vite is listening on `::1` — use `localhost:5173` |
+| CORS errors locally | `VITE_API_URL` origin isn't in the backend's `CORS_ORIGINS` |
+
+If a port behaves strangely, confirm which process owns it and check *both*
+families before debugging the code:
+
+```bash
+curl -s localhost:8000/openapi.json | grep -o '"title":"[^"]*"'   # who is this?
+curl -s 127.0.0.1:8000/openapi.json | grep -o '"title":"[^"]*"'   # same server?
+```
+
+`CORS_ORIGINS` in `.env.example` lists both spellings for port 5173 so either
+works — keep it that way.
+
 ---
 
 ## 4. Tests
@@ -165,12 +239,41 @@ Deploy from `backend/render.yaml`, then fill in the secrets marked
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional |
 
 Then set these to your real URLs (no trailing slash):
-`FRONTEND_URL`, `API_PUBLIC_URL`, `CORS_ORIGINS`.
+`FRONTEND_URL`, `API_PUBLIC_URL`, `CORS_ORIGINS`, `GOOGLE_REDIRECT_URI`,
+`GOOGLE_CALENDAR_REDIRECT_URI`.
 
 The app **refuses to start in production** if `SECRET_KEY` is missing, default
 or under 32 characters, if `MONGODB_URI` points at localhost, or if
 `CORS_ORIGINS` is empty or `*`. A boot failure here is the app telling you a
 secret is missing — check the logs rather than relaxing the check.
+
+#### 5.2.1 Google OAuth — two redirect URIs, not one
+Signing in and reading a calendar are **separate grants**, so both callbacks
+must be registered under *Authorised redirect URIs* in the Google Cloud console
+(APIs & Services → Credentials). Register the local pair too if you develop
+against Google:
+
+```
+https://<your-backend>.onrender.com/api/auth/google/callback
+https://<your-backend>.onrender.com/api/auth/google/calendar/callback
+http://localhost:8000/api/auth/google/callback
+http://localhost:8000/api/auth/google/calendar/callback
+```
+
+*Authorised JavaScript origins* stays empty — the code never leaves the server,
+so only redirect URIs matter. Two things that reliably cost an hour:
+
+- A **new client defaults to "Testing"**, which blocks anyone not listed under
+  OAuth consent screen → Test users. The failure looks like a generic
+  "Access blocked", not a permissions message.
+- Redirect URIs are matched **exactly**. A trailing space, or a console that
+  helpfully upgraded `http://localhost` to `https://`, produces
+  `Error 400: redirect_uri_mismatch`. Changes can also take a few minutes to
+  propagate.
+
+Calendar sync needs `GOOGLE_CLIENT_SECRET` as well as the id — the server
+exchanges a refresh token offline. Leave both unset to hide the feature; the
+booking page keeps working, just without conflict checking.
 
 ### 5.3 Frontend — Netlify
 `netlify.toml` is committed, so Netlify picks up base, build command, publish
@@ -203,6 +306,10 @@ days; if cold starts return, check the workflow is still enabled.
    works end to end.
 5. Check the confirmation email contains a working reschedule/cancel link —
    if the link points at `localhost`, `FRONTEND_URL` is wrong.
+6. Optional: connect Google Calendar in **Integrations** and confirm a busy
+   hour in that calendar disappears from `/book/<slug>`. This is the only way
+   to prove the grant works — the connect button succeeding proves the token
+   was stored, not that freeBusy is being read.
 
 ---
 
@@ -223,6 +330,25 @@ Take an Atlas snapshot before the first deploy of this version. Set
 `RUN_MIGRATIONS_ON_STARTUP=false` afterwards if you prefer to run them
 deliberately.
 
+**One index can fail to build on an existing database.** `uniq_confirmed_slot`
+is unique over `(owner_id, start_time)` for confirmed bookings, so it cannot be
+created if the data already contains a double booking. That is logged as a
+warning and startup continues — the application-level conflict check still
+runs, but the race is no longer closed. To find the offenders:
+
+```javascript
+db.bookings.aggregate([
+  { $match: { status: "confirmed" } },
+  { $group: { _id: { o: "$owner_id", t: "$start_time" }, n: { $sum: 1 } } },
+  { $match: { n: { $gt: 1 } } }
+])
+```
+
+Cancel or move the duplicates, then restart to let the index build.
+
+Existing event types have no `max_bookings_per_day`; the serializer defaults it
+to `0` (unlimited), so nothing changes until a host sets one.
+
 ---
 
 ## 7. Security notes
@@ -238,3 +364,12 @@ deliberately.
 - Invitee manage links are unguessable per-booking tokens that grant nothing
   beyond viewing, rescheduling or cancelling that one booking.
 - `/docs` and `/openapi.json` are disabled when `APP_ENV=production`.
+- Google Calendar access is requested **read-only**
+  (`calendar.readonly`) and only busy intervals are read — never event titles,
+  descriptions or guests. Refresh tokens live in `integrations.config` and are
+  never returned by the API; `/status` reports only whether a calendar is
+  connected.
+- The calendar OAuth flow is pinned to a single-use `state` row with a 10 minute
+  TTL rather than trusting anything in the callback, so a captured callback URL
+  cannot be replayed. Disconnecting deletes the stored grant and clears the
+  cached token immediately.

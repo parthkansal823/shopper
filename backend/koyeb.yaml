@@ -57,6 +57,17 @@ services:
       - key: API_PUBLIC_URL
         secret: api-public-url
 
+      # Optional. Sign-in and calendar sync are separate grants: register both
+      # redirect URIs in the Google console. Omit all four to disable Google.
+      - key: GOOGLE_CLIENT_ID
+        secret: google-client-id
+      - key: GOOGLE_CLIENT_SECRET
+        secret: google-client-secret
+      - key: GOOGLE_REDIRECT_URI
+        secret: google-redirect-uri
+      - key: GOOGLE_CALENDAR_REDIRECT_URI
+        secret: google-calendar-redirect-uri
+
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT

@@ -61,12 +61,17 @@ services:
         value: "true"
 
       # ----- Google OAuth (optional; leave unset to hide the button) -----
+      # Sign-in and calendar sync are separate grants — register BOTH redirect
+      # URIs in the Google console or the flow fails with redirect_uri_mismatch.
+      # Calendar sync needs the client secret to refresh tokens offline.
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
         value: https://shopper-backend-mqcf.onrender.com/api/auth/google/callback
+      - key: GOOGLE_CALENDAR_REDIRECT_URI
+        value: https://shopper-backend-mqcf.onrender.com/api/auth/google/calendar/callback
 
       # ----- SMTP (required for OTP and notification email) -----
       - key: SMTP_HOST
