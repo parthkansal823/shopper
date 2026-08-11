@@ -145,6 +145,7 @@ def duplicate_event_type(
         "buffer_minutes": source.get("buffer_minutes", 0),
         "min_notice_hours": source.get("min_notice_hours", 0),
         "max_advance_days": source.get("max_advance_days", 60),
+        "max_bookings_per_day": source.get("max_bookings_per_day", 0),
         "location": source.get("location", ""),
         "location_type": source.get("location_type", "video"),
         "questions": source.get("questions", []),

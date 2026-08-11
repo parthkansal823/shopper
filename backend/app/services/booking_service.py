@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from pymongo.database import Database
 
 from ..config import settings
+from . import calendar_sync
 
 
 def get_timezone(db: Database, owner_id: str) -> str:
@@ -108,6 +109,10 @@ class _RangeData:
     windows_by_weekday: dict[int, list[tuple[time, time]]]
     blocked_days: set[str]
     busy: list[dict]
+    # Busy intervals from the host's connected external calendar. Kept separate
+    # from ``busy`` because they have no event type and so never count toward a
+    # per-event daily cap — they only block overlapping slots.
+    external_busy: list[tuple[datetime, datetime]]
 
 
 def _load_range(db: Database, owner_id: str, first_day: date, last_day: date) -> _RangeData:
@@ -153,7 +158,10 @@ def _load_range(db: Database, owner_id: str, first_day: date, last_day: date) ->
         "start_time": {"$gte": span_start_utc, "$lt": span_end_utc},
     }))
 
-    return _RangeData(timezone_name, windows_by_weekday, blocked_days, busy)
+    # One freeBusy call covers the whole span, matching the batching above.
+    external_busy = calendar_sync.get_busy_ranges(db, owner_id, span_start_utc, span_end_utc)
+
+    return _RangeData(timezone_name, windows_by_weekday, blocked_days, busy, external_busy)
 
 
 def generate_slots(db: Database, event_type: dict, requested_date: date) -> list[dict]:
@@ -179,6 +187,27 @@ def generate_available_days(
     return days
 
 
+def _bookings_on_day(
+    event_type: dict, requested_date: date, data: _RangeData, tz: ZoneInfo
+) -> int:
+    """Confirmed bookings of this event type on a host-local day.
+
+    Counted in the host's timezone, since that is the day the cap is about —
+    a late-evening slot stored in UTC can land on the next UTC date.
+    """
+    event_id = str(event_type.get("id") or event_type.get("_id") or "")
+    total = 0
+    for booking in data.busy:
+        if str(booking.get("event_type_id", "")) != event_id:
+            continue
+        start = booking.get("start_time")
+        if not isinstance(start, datetime):
+            continue
+        if start.replace(tzinfo=timezone.utc).astimezone(tz).date() == requested_date:
+            total += 1
+    return total
+
+
 def _slots_for_day(event_type: dict, requested_date: date, data: _RangeData) -> list[dict]:
     """Slot generation proper, against data already in memory."""
     if not event_type.get("is_active", True):
@@ -198,6 +227,12 @@ def _slots_for_day(event_type: dict, requested_date: date, data: _RangeData) -> 
     if not windows:
         return []
 
+    # A daily cap closes the whole day once it's reached, rather than letting
+    # the link keep taking bookings the host never intended to accept.
+    cap = event_type.get("max_bookings_per_day", 0)
+    if cap and _bookings_on_day(event_type, requested_date, data, tz) >= cap:
+        return []
+
     now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
     earliest_allowed_utc = now_utc_naive + timedelta(
         hours=event_type.get("min_notice_hours", 0)
@@ -212,7 +247,7 @@ def _slots_for_day(event_type: dict, requested_date: date, data: _RangeData) -> 
     busy_ranges = [
         (b["start_time"], b.get("end_time") or b["start_time"] + slot_duration)
         for b in data.busy
-    ]
+    ] + data.external_busy
 
     slots: list[dict] = []
     for window_start, window_end in windows:

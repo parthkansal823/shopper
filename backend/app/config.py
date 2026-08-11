@@ -85,6 +85,13 @@ class Settings:
     GOOGLE_REDIRECT_URI: str = os.getenv(
         "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback"
     )
+    # Calendar access is a separate grant from sign-in: it needs a wider scope
+    # and a refresh token, and hosts should be able to sign in without handing
+    # over their calendar. Register this URI in the Google console too.
+    GOOGLE_CALENDAR_REDIRECT_URI: str = os.getenv(
+        "GOOGLE_CALENDAR_REDIRECT_URI",
+        "http://localhost:8000/api/auth/google/calendar/callback",
+    )
 
     # ----- Public URLs -----
     # FRONTEND_URL builds the invitee's manage/reschedule links; API_PUBLIC_URL

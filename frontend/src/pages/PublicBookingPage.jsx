@@ -474,7 +474,7 @@ export default function PublicBookingPage() {
 
                 <form
                   className="stack-4"
-                  onSubmit={(event) => { event.preventDefault(); setTouched(true); if (!hasErrors && isVerified) setStep(2); }}
+                  onSubmit={(event) => { event.preventDefault(); setTouched(true); if (!hasErrors) setStep(2); }}
                   noValidate
                 >
                   <div className="field">
@@ -490,59 +490,19 @@ export default function PublicBookingPage() {
 
                   <div className="field">
                     <label className="field-label" htmlFor="email">Email</label>
-                    <div className="input-group">
-                      <input
-                        id="email" className="input" type="email" placeholder="jane@example.com"
-                        value={form.booker_email}
-                        disabled={otpStage !== "idle"}
-                        onChange={(event) => {
-                          setForm({ ...form, booker_email: event.target.value });
-                          if (otpStage !== "idle") resetVerification();
-                        }}
-                        aria-invalid={touched && errors.booker_email ? "true" : "false"}
-                      />
-                      {otpStage === "idle" ? (
-                        <button type="button" className="btn" onClick={sendCode} disabled={!emailValid || otpSending}>
-                          {otpSending ? <span className="spinner" /> : "Send code"}
-                        </button>
-                      ) : (
-                        <button type="button" className="btn btn-ghost" onClick={resetVerification}>Change</button>
-                      )}
-                    </div>
-                    {touched && errors.booker_email && <span className="error-text">{errors.booker_email}</span>}
-                    {isVerified && (
-                      <span className="small" style={{ color: "var(--c-ok)", display: "flex", alignItems: "center", gap: 5 }}>
-                        <Icon name="check" size={13} strokeWidth={2.6} /> Email verified
-                      </span>
-                    )}
+                    <input
+                      id="email" className="input" type="email" placeholder="jane@example.com"
+                      value={form.booker_email}
+                      onChange={(event) => {
+                        setForm({ ...form, booker_email: event.target.value });
+                        if (otpStage !== "idle") resetVerification();
+                      }}
+                      aria-invalid={touched && errors.booker_email ? "true" : "false"}
+                    />
+                    {touched && errors.booker_email
+                      ? <span className="error-text">{errors.booker_email}</span>
+                      : <span className="hint">We&apos;ll send a code here to confirm the booking.</span>}
                   </div>
-
-                  {otpStage === "sent" && (
-                    <div className="field">
-                      <label className="field-label" htmlFor="otp">Verification code</label>
-                      <div className="input-group">
-                        <input
-                          id="otp" className="input input-otp" inputMode="numeric" autoComplete="one-time-code"
-                          maxLength={6} placeholder="000000" value={otpCode}
-                          onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ""))}
-                        />
-                        <button type="button" className="btn btn-primary" onClick={verifyCode} disabled={otpCode.length < 4 || otpVerifying}>
-                          {otpVerifying ? <span className="spinner" /> : "Verify"}
-                        </button>
-                      </div>
-                      <span className="hint">
-                        {resendIn > 0
-                          ? `You can resend in ${resendIn}s`
-                          : <button type="button" className="btn-link" onClick={sendCode}>Resend code</button>}
-                      </span>
-                      {devCode && (
-                        <p className="banner banner-warn tiny">
-                          Development mode — SMTP isn&apos;t configured. Your code is{" "}
-                          <strong data-dev-code={devCode}>{devCode}</strong>.
-                        </p>
-                      )}
-                    </div>
-                  )}
 
                   {questions.map((question) => (
                     <QuestionField
@@ -566,7 +526,7 @@ export default function PublicBookingPage() {
                   </div>
 
                   <div className="row-end">
-                    <button type="submit" className="btn btn-primary" disabled={hasErrors || !isVerified}>
+                    <button type="submit" className="btn btn-primary" disabled={hasErrors}>
                       Review <Icon name="arrowRight" size={14} />
                     </button>
                   </div>
@@ -600,8 +560,54 @@ export default function PublicBookingPage() {
                   {form.notes ? <div><dt>Notes</dt><dd>{form.notes}</dd></div> : null}
                 </dl>
 
+                {isVerified ? (
+                  <p className="small" style={{ color: "var(--c-ok)", display: "flex", alignItems: "center", gap: 5 }}>
+                    <Icon name="check" size={13} strokeWidth={2.6} /> Email verified
+                  </p>
+                ) : (
+                  <div className="panel stack-3">
+                    <div>
+                      <p className="small" style={{ fontWeight: 600 }}>Verify your email</p>
+                      <p className="tiny subtle">
+                        We&apos;ll send a 6-digit code to {form.booker_email} so we know the booking is really yours.
+                      </p>
+                    </div>
+
+                    {otpStage === "idle" ? (
+                      <button type="button" className="btn" onClick={sendCode} disabled={!emailValid || otpSending}>
+                        {otpSending ? <span className="spinner" /> : "Send code"}
+                      </button>
+                    ) : (
+                      <div className="field">
+                        <label className="field-label" htmlFor="otp">Verification code</label>
+                        <div className="input-group">
+                          <input
+                            id="otp" className="input input-otp" inputMode="numeric" autoComplete="one-time-code"
+                            maxLength={6} placeholder="000000" value={otpCode}
+                            onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ""))}
+                          />
+                          <button type="button" className="btn btn-primary" onClick={verifyCode} disabled={otpCode.length < 4 || otpVerifying}>
+                            {otpVerifying ? <span className="spinner" /> : "Verify"}
+                          </button>
+                        </div>
+                        <span className="hint">
+                          {resendIn > 0
+                            ? `You can resend in ${resendIn}s`
+                            : <button type="button" className="btn-link" onClick={sendCode}>Resend code</button>}
+                        </span>
+                        {devCode && (
+                          <p className="banner banner-warn tiny">
+                            Development mode — SMTP isn&apos;t configured. Your code is{" "}
+                            <strong data-dev-code={devCode}>{devCode}</strong>.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="row-end">
-                  <button className="btn btn-primary btn-lg" onClick={confirmBooking} disabled={submitting}>
+                  <button className="btn btn-primary btn-lg" onClick={confirmBooking} disabled={submitting || !isVerified}>
                     {submitting ? <><span className="spinner" /> Confirming…</> : "Confirm booking"}
                   </button>
                 </div>

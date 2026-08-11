@@ -16,6 +16,7 @@ _EVENT_TYPE_DEFAULTS = {
     "buffer_minutes": 0,
     "min_notice_hours": 0,
     "max_advance_days": 60,
+    "max_bookings_per_day": 0,
     "location": "",
     "location_type": "video",
     "description": "",

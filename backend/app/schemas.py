@@ -39,6 +39,9 @@ class EventTypeBase(BaseModel):
     buffer_minutes: int = Field(default=0, ge=0, le=120)
     min_notice_hours: int = Field(default=0, ge=0, le=168)
     max_advance_days: int = Field(default=60, ge=1, le=365)
+    # 0 means unlimited. Caps how many times this event type can be booked on
+    # one host-local day, so a busy link can't swallow a whole working day.
+    max_bookings_per_day: int = Field(default=0, ge=0, le=50)
     location: str = Field(default="", max_length=255)
     location_type: str = Field(default="video", max_length=32)
     questions: list[BookingQuestion] = Field(default_factory=list, max_length=10)

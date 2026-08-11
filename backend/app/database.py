@@ -52,6 +52,8 @@ def ensure_indexes(db: Database) -> None:
 
     # Mongo evicts these automatically; no cleanup job needed.
     db.rate_limits.create_index("expires_at", expireAfterSeconds=0)
+    db.oauth_states.create_index("state", unique=True)
+    db.oauth_states.create_index("expires_at", expireAfterSeconds=0)
 
 
 # ------------------------------------------------------------------ helpers --

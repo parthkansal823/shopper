@@ -16,6 +16,7 @@ const EMPTY_FORM = {
   buffer_minutes: 0,
   min_notice_hours: 0,
   max_advance_days: 60,
+  max_bookings_per_day: 0,
   location: "",
   location_type: "video",
   questions: [],
@@ -480,12 +481,28 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="field">
-                  <label className="field-label" htmlFor="advance">Bookable up to</label>
-                  <div className="input-affix" style={{ maxWidth: 180 }}>
-                    <input id="advance" className="input num" type="number" min="1" max="365" value={form.max_advance_days}
-                           onChange={(event) => setForm({ ...form, max_advance_days: Number(event.target.value) })} />
-                    <span className="affix affix-end">days ahead</span>
+                <div className="grid-2">
+                  <div className="field">
+                    <label className="field-label" htmlFor="advance">Bookable up to</label>
+                    <div className="input-affix">
+                      <input id="advance" className="input num" type="number" min="1" max="365" value={form.max_advance_days}
+                             onChange={(event) => setForm({ ...form, max_advance_days: Number(event.target.value) })} />
+                      <span className="affix affix-end">days ahead</span>
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label className="field-label" htmlFor="daily-cap">Daily limit</label>
+                    <div className="input-affix">
+                      <input id="daily-cap" className="input num" type="number" min="0" max="50" value={form.max_bookings_per_day}
+                             onChange={(event) => setForm({ ...form, max_bookings_per_day: Number(event.target.value) })} />
+                      <span className="affix affix-end">per day</span>
+                    </div>
+                    <span className="hint">
+                      {form.max_bookings_per_day > 0
+                        ? `Closes the day after ${form.max_bookings_per_day} booking${form.max_bookings_per_day === 1 ? "" : "s"}.`
+                        : "0 means no limit."}
+                    </span>
                   </div>
                 </div>
 

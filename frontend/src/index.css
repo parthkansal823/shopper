@@ -857,7 +857,18 @@ h4 { font-size: 0.875rem; font-weight: 650; letter-spacing: -0.01em; }
 .step.is-active { color: var(--c-ink); }
 .step.is-active .step-dot { background: var(--c-accent); border-color: var(--c-accent); color: var(--c-on-accent); }
 .step.is-done .step-dot { background: var(--c-sunken); color: var(--c-ink); }
+.step-dot.is-complete { background: var(--c-ok); border-color: var(--c-ok); color: var(--c-on-accent); }
 .step-label { font-size: 0.75rem; font-weight: 550; }
+
+/* Bookings grouped under a sticky day heading. */
+.timeline { display: flex; flex-direction: column; gap: var(--s5); }
+.timeline-group-label {
+  position: sticky; top: 0; z-index: 1;
+  padding: var(--s2) 0;
+  background: var(--c-bg);
+  font-size: 0.75rem; font-weight: 650;
+  color: var(--c-ink-2);
+}
 
 .tz-field { min-width: 210px; }
 .tz-field .select { height: 30px; font-size: 0.75rem; }

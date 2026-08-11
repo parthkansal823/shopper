@@ -4,7 +4,7 @@ import logging
 import re
 import secrets
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -21,9 +21,11 @@ from ..security import (
     create_access_token,
     hash_api_key,
     hash_password,
+    require_owner_id,
     require_user,
     verify_password,
 )
+from ..services import calendar_sync
 from ..services.rate_limit import check_rate_limit, client_ip
 
 logger = logging.getLogger("schedulr.auth")
@@ -263,6 +265,124 @@ async def google_callback(code: str, db: Database = Depends(get_db)):
     return RedirectResponse(
         url=f"{settings.FRONTEND_URL.rstrip('/')}/auth/callback?token={jwt_token}"
     )
+
+
+# ----------------------------------------------------- Google Calendar sync --
+
+def _calendar_redirect(status_value: str) -> RedirectResponse:
+    base = settings.FRONTEND_URL.rstrip("/")
+    return RedirectResponse(url=f"{base}/integrations?calendar={status_value}")
+
+
+@router.get("/google/calendar/connect", summary="Begin the Google Calendar grant")
+def google_calendar_connect(
+    db: Database = Depends(get_db),
+    owner_id: str = Depends(require_owner_id),
+):
+    """Return the consent URL for read-only calendar access.
+
+    The browser leaves with no Authorization header, so the caller is pinned to
+    a single-use ``state`` row rather than trusting anything in the callback.
+    """
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google OAuth is not configured.")
+
+    state = secrets.token_urlsafe(32)
+    db.oauth_states.insert_one({
+        "state": state,
+        "owner_id": owner_id,
+        "purpose": "google_calendar",
+        "created_at": _utcnow(),
+        "expires_at": _utcnow() + timedelta(minutes=10),
+    })
+
+    params = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": settings.GOOGLE_CALENDAR_REDIRECT_URI,
+        "response_type": "code",
+        "scope": f"openid email {calendar_sync.CALENDAR_SCOPE}",
+        "access_type": "offline",
+        # Without this Google withholds the refresh token on repeat grants,
+        # leaving the server unable to read the calendar later.
+        "prompt": "consent",
+        "include_granted_scopes": "true",
+        "state": state,
+    }
+    return {"url": f"{GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"}
+
+
+@router.get("/google/calendar/callback", summary="Store the Google Calendar grant")
+async def google_calendar_callback(
+    state: str,
+    code: str = "",
+    error: str = "",
+    db: Database = Depends(get_db),
+):
+    # Single use: consume the state whatever happens, so a leaked callback URL
+    # cannot be replayed.
+    row = db.oauth_states.find_one_and_delete({"state": state, "purpose": "google_calendar"})
+    if not row:
+        return _calendar_redirect("invalid")
+    if error:
+        return _calendar_redirect("denied")
+
+    owner_id = row["owner_id"]
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        token_resp = await client.post(GOOGLE_TOKEN_URL, data={
+            "code": code,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "redirect_uri": settings.GOOGLE_CALENDAR_REDIRECT_URI,
+            "grant_type": "authorization_code",
+        })
+    if token_resp.status_code != 200:
+        logger.warning("Calendar code exchange failed: HTTP %s", token_resp.status_code)
+        return _calendar_redirect("failed")
+
+    payload = token_resp.json()
+    refresh_token = payload.get("refresh_token")
+    if not refresh_token:
+        # Google only returns one on first consent; prompt=consent should stop
+        # this, but a grant made outside this flow could still land here.
+        return _calendar_redirect("norefresh")
+
+    db.integrations.update_one(
+        {"owner_id": owner_id, "key": calendar_sync.INTEGRATION_KEY},
+        {"$set": {
+            "type": "oauth",
+            "config": {"refresh_token": refresh_token, "invalid": False},
+            "connected_at": _utcnow(),
+        }},
+        upsert=True,
+    )
+    calendar_sync.invalidate(owner_id)
+    return _calendar_redirect("connected")
+
+
+@router.get("/google/calendar/status", summary="Is a calendar connected?")
+def google_calendar_status(
+    db: Database = Depends(get_db),
+    owner_id: str = Depends(require_owner_id),
+):
+    doc = calendar_sync.get_connection(db, owner_id)
+    config = (doc or {}).get("config", {})
+    return {
+        "connected": bool(doc and config.get("refresh_token") and not config.get("invalid")),
+        "needs_reconnect": bool(doc and config.get("invalid")),
+        "connected_at": doc["connected_at"].isoformat() if doc and doc.get("connected_at") else None,
+        "configured": bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET),
+    }
+
+
+@router.delete("/google/calendar", summary="Disconnect Google Calendar")
+def google_calendar_disconnect(
+    db: Database = Depends(get_db),
+    owner_id: str = Depends(require_owner_id),
+):
+    db.integrations.delete_one({"owner_id": owner_id, "key": calendar_sync.INTEGRATION_KEY})
+    calendar_sync.invalidate(owner_id)
+    return {"connected": False}
 
 
 # ------------------------------------------------------------------- profile --
