@@ -166,6 +166,32 @@ npm run dev
 Leave `SMTP_*` blank in development: emails are written to the server log, and
 the booking OTP is shown in the UI so you can complete a booking end to end.
 
+**If email silently isn't arriving**, check these in order — the first is by far
+the most common, and none of them raise an error:
+
+1. **The server is running with stale settings.** `.env` is read once at
+   startup, so adding `SMTP_PASS` to a running server changes nothing until you
+   restart it.
+2. **Gmail needs an App Password**, not your account password, and 2-Step
+   Verification must be on for that option to exist. Google displays it as
+   `xxxx xxxx xxxx xxxx`; the spaces are only for readability, so paste the 16
+   characters without them.
+3. **Check `/health`.** `"email_mode"` reports what the server actually
+   resolved: `smtp` (will send), `console` (logged only — some `SMTP_*` value
+   is blank), or `disabled`.
+4. **Look in spam.** A brand-new Gmail sender with no SPF/DKIM alignment is
+   frequently filtered, especially the OTP mail. Delivery succeeding in the log
+   means Gmail accepted it for relay, not that it reached the inbox.
+
+To test the whole path without going through the booking UI:
+
+```bash
+cd backend
+python -c "from app.services.email_service import send_email_now; \
+print(send_email_now(subject='Shopper test', recipient='you@example.com', \
+html_body='<p>hello</p>', text_body='hello'))"
+```
+
 Interactive API docs are at `/docs` — disabled automatically in production.
 
 **An empty database looks broken.** With no availability and no event types,

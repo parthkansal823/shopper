@@ -27,7 +27,7 @@ def _list_env(name: str, default: List[str] | None = None) -> List[str]:
 
 class Settings:
     # ----- App metadata -----
-    APP_NAME: str = os.getenv("APP_NAME", "Schedulr API")
+    APP_NAME: str = os.getenv("APP_NAME", "Shopper API")
     APP_ENV: str = os.getenv("APP_ENV", "development")
     DEBUG: bool = _bool_env("DEBUG", default=False)
 
@@ -61,7 +61,7 @@ class Settings:
     SMTP_USER: str = os.getenv("SMTP_USER", "")
     SMTP_PASS: str = os.getenv("SMTP_PASS", "")
     SMTP_FROM: str = os.getenv("SMTP_FROM", "")
-    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "Schedulr")
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "Shopper")
     SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "10"))
     SMTP_RETRY_COUNT: int = int(os.getenv("SMTP_RETRY_COUNT", "1"))
 

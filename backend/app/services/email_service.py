@@ -41,46 +41,181 @@ def _log_console_email(*, subject: str, recipient: str, text_body: str) -> bool:
 # Templates
 # ---------------------------------------------------------------------------
 
-_BASE_STYLE = (
-    "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;"
-    "color: #18181b; line-height: 1.6; max-width: 520px; margin: 0 auto;"
-    "padding: 32px; background: #ffffff; border: 1px solid #e4e4e7; border-radius: 12px;"
+# Email clients are not browsers. Layout is tables rather than flex or grid,
+# every colour is inline (Gmail drops much of a <style> block), and the sizes
+# are absolute because rem is unreliable. The <style> block carries only
+# progressive enhancement — dark mode and a mobile tweak — so the mail still
+# reads correctly in a client that discards it entirely.
+
+# Palette and font mirror frontend/src/index.css so the mail looks like the
+# product, not a generic notification. Shopper's design is monochrome — the
+# accent *is* the ink — and dark mode inverts the button rather than tinting
+# it, which is why the dark rules below swap button colours outright.
+# 'Plus Jakarta Sans' leads the stack for the few clients that already have it;
+# webfonts can't be loaded in most email clients, so the fallbacks do the work.
+
+_FONT = (
+    "'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, "
+    "BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 )
-_BUTTON_STYLE = (
-    "display: inline-block; padding: 11px 20px; background: #18181b;"
-    "color: #ffffff !important; text-decoration: none; border-radius: 8px;"
-    "font-weight: 500; font-size: 14px; margin-top: 8px;"
-)
-_CARD_STYLE = (
-    "background: #fafafa; border: 1px solid #e4e4e7; border-radius: 10px;"
-    "padding: 16px; margin: 20px 0;"
-)
-_LABEL_STYLE = (
-    "margin: 0 0 4px; color: #71717a; font-size: 11px;"
-    "letter-spacing: 0.06em; text-transform: uppercase;"
-)
-_MUTED_LINK_STYLE = "color: #71717a; font-size: 13px;"
+
+_INK = "#111113"        # --c-ink
+_INK_SOFT = "#5c5c66"   # --c-ink-2
+_MUTED = "#8e8e98"      # --c-ink-3
+_LINE = "#e8e8ea"       # --c-line
+_PAGE_BG = "#f4f4f5"    # --c-sunken
+_CARD_BG = "#ffffff"    # --c-surface
+_PANEL_BG = "#fafafa"   # --c-raised
+_ACCENT = "#111113"     # --c-accent
+_ON_ACCENT = "#ffffff"  # --c-on-accent
+
+_RADIUS = "8px"         # --r-md, buttons
+_RADIUS_CARD = "12px"   # --r-lg, matches .card in the app
+
+_HEAD = """\
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<style>
+  /* Progressive enhancement only — the inline styles already stand alone.
+     Values are the [data-theme="dark"] block from the app's index.css. */
+  @media (prefers-color-scheme: dark) {
+    .sh-page  { background: #0a0a0c !important; }
+    .sh-card  { background: #101013 !important; border-color: #26262c !important; }
+    .sh-panel { background: #16161a !important; border-color: #26262c !important; }
+    .sh-ink   { color: #f5f5f7 !important; }
+    .sh-soft  { color: #a2a2ad !important; }
+    .sh-muted { color: #74747f !important; }
+    .sh-rule  { border-color: #26262c !important; }
+    /* The app inverts the accent in dark mode; the button follows. */
+    .sh-btn   { background: #f5f5f7 !important; }
+    .sh-btn a { color: #0a0a0c !important; }
+    .sh-link  { color: #f5f5f7 !important; }
+  }
+  @media only screen and (max-width: 600px) {
+    .sh-card { padding: 24px !important; }
+    .sh-code { font-size: 30px !important; letter-spacing: 6px !important; }
+  }
+</style>"""
 
 
-def _wrap_html(title: str, inner: str) -> str:
+def _wrap_html(title: str, inner: str, preheader: str = "") -> str:
+    """Shell every email shares: preheader, brand line, card, footer.
+
+    ``preheader`` is the grey snippet an inbox shows beside the subject. It is
+    hidden in the body itself, and padded so the client doesn't pull the first
+    line of real content in after it.
+    """
+    hidden_preheader = ""
+    if preheader:
+        hidden_preheader = (
+            '<div style="display:none;max-height:0;overflow:hidden;opacity:0;'
+            'mso-hide:all;font-size:1px;line-height:1px;color:#f4f4f5;">'
+            f"{escape(preheader)}{'&#8199;&#65279;&#847;' * 30}</div>"
+        )
+
     return f"""\
 <!doctype html>
-<html><body style="margin:0;background:#fafafa;padding:32px 16px;">
-<div style="{_BASE_STYLE}">
-  <h2 style="margin:0 0 16px;font-size:17px;font-weight:600;">{escape(title)}</h2>
-  {inner}
-  <p style="margin:28px 0 0;font-size:12px;color:#a1a1aa;">Sent by Shopper</p>
-</div>
+<html lang="en">
+<head>{_HEAD}</head>
+<body class="sh-page" style="margin:0;padding:0;background:{_PAGE_BG};">
+{hidden_preheader}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       class="sh-page" style="background:{_PAGE_BG};padding:32px 12px;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="max-width:560px;margin:0 auto;">
+
+        <tr>
+          <td style="padding:0 4px 14px;font-family:{_FONT};font-size:13px;
+                     font-weight:700;letter-spacing:-0.01em;color:{_ACCENT};">
+            Shopper
+          </td>
+        </tr>
+
+        <tr>
+          <td class="sh-card"
+              style="background:{_CARD_BG};border:1px solid {_LINE};border-radius:{_RADIUS_CARD};padding:32px;">
+            <h1 class="sh-ink"
+                style="margin:0 0 18px;font-family:{_FONT};font-size:19px;line-height:1.3;
+                       font-weight:650;color:{_INK};letter-spacing:-0.015em;">{escape(title)}</h1>
+            {inner}
+          </td>
+        </tr>
+
+        <tr>
+          <td class="sh-muted"
+              style="padding:18px 4px 0;font-family:{_FONT};font-size:12px;
+                     line-height:1.5;color:{_MUTED};">
+            Sent by Shopper · scheduling without the back-and-forth
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
 </body></html>"""
 
 
+def _paragraph(text: str) -> str:
+    return (
+        f'<p class="sh-soft" style="margin:0;font-family:{_FONT};font-size:15px;'
+        f'line-height:1.6;color:{_INK_SOFT};">{escape(text)}</p>'
+    )
+
+
 def _detail_card(rows: list[tuple[str, str]]) -> str:
-    inner = f'<div style="{_CARD_STYLE}">'
+    """The labelled facts of a booking, as a table so Outlook keeps the rows."""
+    cells = ""
     for index, (label, value) in enumerate(rows):
-        margin_top = "0" if index == 0 else "14px"
-        inner += f'<p style="{_LABEL_STYLE}margin-top:{margin_top};">{escape(label)}</p>'
-        inner += f'<p style="margin:0;font-weight:500;font-size:14px;">{escape(value)}</p>'
-    return inner + "</div>"
+        padding_top = "0" if index == 0 else "14px"
+        cells += f"""
+        <tr>
+          <td style="padding-top:{padding_top};">
+            <p class="sh-muted" style="margin:0 0 3px;font-family:{_FONT};font-size:11px;
+               font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:{_MUTED};"
+            >{escape(label)}</p>
+            <p class="sh-ink" style="margin:0;font-family:{_FONT};font-size:15px;
+               font-weight:550;color:{_INK};">{escape(value)}</p>
+          </td>
+        </tr>"""
+
+    return f"""
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+           class="sh-panel"
+           style="background:{_PANEL_BG};border:1px solid {_LINE};border-radius:{_RADIUS};
+                  padding:18px;margin:20px 0;">
+      {cells}
+    </table>"""
+
+
+def _button(url: str, label: str) -> str:
+    """A bulletproof CTA — the anchor carries its own padding for Outlook."""
+    return f"""
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 0;">
+      <tr>
+        <td class="sh-btn" align="center" bgcolor="{_ACCENT}"
+            style="background:{_ACCENT};border-radius:{_RADIUS};">
+          <a href="{escape(url, quote=True)}"
+             style="display:inline-block;padding:12px 24px;font-family:{_FONT};font-size:15px;
+                    font-weight:600;color:{_ON_ACCENT};text-decoration:none;
+                    border-radius:{_RADIUS};"
+          >{escape(label)}</a>
+        </td>
+      </tr>
+    </table>"""
+
+
+def _footnote(html: str, ruled: bool = False) -> str:
+    rule = f"margin-top:24px;padding-top:20px;border-top:1px solid {_LINE};" if ruled else "margin-top:16px;"
+    classes = "sh-muted sh-rule" if ruled else "sh-muted"
+    return (
+        f'<p class="{classes}" style="{rule}margin-bottom:0;font-family:{_FONT};'
+        f'font-size:13px;line-height:1.55;color:{_MUTED};">{html}</p>'
+    )
 
 
 def manage_url_for(manage_token: Optional[str]) -> str:
@@ -103,15 +238,12 @@ def _guest_booking_html(
     }
     title, lead = headlines.get(action, ("Booking update", "There is an update on your booking."))
 
-    inner = f'<p style="margin:0;font-size:14px;color:#3f3f46;">{lead}</p>'
+    inner = _paragraph(lead)
     inner += _detail_card([("Event", event_title), ("When", start_time)])
 
     if meeting_url and action != "cancelled":
-        inner += f'<a href="{escape(meeting_url, quote=True)}" style="{_BUTTON_STYLE}">Join video call</a>'
-        inner += (
-            f'<p style="{_MUTED_LINK_STYLE}margin:10px 0 0;">'
-            f"Or copy this link: {escape(meeting_url)}</p>"
-        )
+        inner += _button(meeting_url, "Join video call")
+        inner += _footnote(f"Or paste this link into your browser: {escape(meeting_url)}")
 
     text_lines = [lead, "", f"Event: {event_title}", f"When:  {start_time}"]
     if meeting_url and action != "cancelled":
@@ -119,21 +251,21 @@ def _guest_booking_html(
 
     manage_url = manage_url_for(manage_token)
     if manage_url and action != "cancelled":
-        inner += (
-            f'<p style="margin:24px 0 0;padding-top:20px;border-top:1px solid #e4e4e7;'
-            f'{_MUTED_LINK_STYLE}">Need to change plans? '
-            f'<a href="{escape(manage_url, quote=True)}" style="color:#18181b;">'
-            f"Reschedule or cancel</a> — no account needed.</p>"
+        inner += _footnote(
+            "Need to change plans? "
+            f'<a class="sh-link" href="{escape(manage_url, quote=True)}" '
+            f'style="color:{_INK};font-weight:600;">Reschedule or cancel</a>'
+            " — no account needed.",
+            ruled=True,
         )
         text_lines += ["", f"Reschedule or cancel: {manage_url}"]
 
     if action == "cancelled":
-        inner += (
-            '<p style="margin:16px 0 0;font-size:13px;color:#71717a;">'
-            "If this was unexpected, please reach out to the organiser.</p>"
-        )
+        inner += _footnote("If this was unexpected, please reach out to the organiser.")
 
-    return _wrap_html(title, inner), "\n".join(text_lines)
+    # The inbox preview should say when, not repeat the subject line.
+    preheader = f"{event_title} — {start_time}"
+    return _wrap_html(title, inner, preheader), "\n".join(text_lines)
 
 
 def _host_booking_html(
@@ -163,37 +295,55 @@ def _host_booking_html(
     if guest_email:
         rows.append(("Email", guest_email))
 
-    inner = f'<p style="margin:0;font-size:14px;color:#3f3f46;">{escape(lead)}</p>'
+    inner = _paragraph(lead)
     inner += _detail_card(rows)
 
     if meeting_url and action != "host_cancelled_by_guest":
-        inner += f'<a href="{escape(meeting_url, quote=True)}" style="{_BUTTON_STYLE}">Join video call</a>'
+        inner += _button(meeting_url, "Join video call")
 
     text_lines = [lead, "", f"Event: {event_title}", f"When:  {start_time}"]
     if guest_name:
         text_lines.append(f"Guest: {guest_name} <{guest_email}>")
     if meeting_url and action != "host_cancelled_by_guest":
         text_lines += ["", f"Join: {meeting_url}"]
-    return _wrap_html(title, inner), "\n".join(text_lines)
+
+    preheader = f"{guest_name or 'A guest'} · {start_time}"
+    return _wrap_html(title, inner, preheader), "\n".join(text_lines)
 
 
 def _otp_html(code: str, ttl_minutes: int) -> tuple[str, str]:
-    inner = (
-        '<p style="margin:0;font-size:14px;color:#3f3f46;">'
-        "Use this code to verify your email and finish booking your meeting.</p>"
-        f'<div style="{_CARD_STYLE}text-align:center;">'
-        f'<p style="{_LABEL_STYLE}">Verification code</p>'
-        f'<p style="margin:0;font-size:32px;letter-spacing:8px;font-weight:600;">{escape(code)}</p>'
-        "</div>"
-        '<p style="margin:0;color:#71717a;font-size:13px;">'
-        f"This code expires in {ttl_minutes} minute(s). "
-        "If you didn't request it, you can ignore this email.</p>"
+    minutes = f"{ttl_minutes} minute" + ("s" if ttl_minutes != 1 else "")
+
+    inner = _paragraph("Enter this code to verify your email and finish booking.")
+    inner += f"""
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+           class="sh-panel"
+           style="background:{_PANEL_BG};border:1px solid {_LINE};border-radius:{_RADIUS};
+                  padding:22px;margin:20px 0;">
+      <tr>
+        <td align="center">
+          <p class="sh-muted" style="margin:0 0 8px;font-family:{_FONT};font-size:11px;
+             font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:{_MUTED};"
+          >Verification code</p>
+          <p class="sh-ink sh-code" style="margin:0;font-family:{_FONT};font-size:34px;
+             font-weight:700;color:{_INK};letter-spacing:9px;text-indent:9px;line-height:1.15;"
+          >{escape(code)}</p>
+        </td>
+      </tr>
+    </table>"""
+    # text-indent above offsets the trailing letter-space so the digits sit
+    # optically centred rather than pushed left.
+    inner += _footnote(
+        f"The code expires in {minutes}. If you didn't request it, you can ignore this email —"
+        " nothing was booked."
     )
+
     text = (
-        f"Your Shopper verification code is: {code}\n"
-        f"It expires in {ttl_minutes} minute(s).\n"
+        f"Your Shopper verification code is: {code}\n\n"
+        f"It expires in {minutes}. If you didn't request it, you can ignore "
+        "this email — nothing was booked.\n"
     )
-    return _wrap_html("Verify your email", inner), text
+    return _wrap_html("Verify your email", inner, f"Your code is {code}"), text
 
 
 # ---------------------------------------------------------------------------
