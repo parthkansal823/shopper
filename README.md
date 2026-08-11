@@ -312,16 +312,44 @@ VITE_API_URL = https://<your-backend>.onrender.com
 Vite inlines this at build time, so **changing it requires a redeploy**, not
 just a restart.
 
-### 5.4 Keeping the free backend awake
-Render's free tier suspends a service after ~15 minutes idle, and waking it
-costs the next visitor ~50 seconds. `.github/workflows/keep-alive.yml` pings
-`/health` every 14 minutes to prevent that.
+### 5.4 Keeping the free backend and database awake
+Two different things go to sleep, on very different clocks:
 
-The free tier allows 750 instance-hours per month against a ~730-hour month,
-so one always-on service fits — but there is no room for a second free service
-in the same account. Set the repo variable `BACKEND_URL` if your URL differs.
-GitHub disables scheduled workflows on repositories with no activity for 60
-days; if cold starts return, check the workflow is still enabled.
+| | Idles after | Wakes on a request? |
+| :-- | :-- | :-- |
+| **Render** free web service | ~15 minutes | Yes — but the visitor waits ~50 s |
+| **Atlas** M0 cluster | ~60 days with no connections | **No** — it stays paused until someone clicks *Resume* |
+
+One monitor covers both. `/health` is not a static response — it runs
+`get_db().command("ping")`, so every check is real database activity as well as
+real HTTP traffic. Keeping it pinged keeps Render warm *and* the 60-day Atlas
+idle timer from ever running down.
+
+**UptimeRobot (recommended).** Its free tier checks every 5 minutes, which is
+comfortably inside Render's ~15 minute window.
+
+- Monitor type **HTTP(S)**, URL `https://<your-backend>.onrender.com/health`
+- `HEAD` is supported — `/health` is declared
+  `@app.api_route(..., methods=["GET", "HEAD"])`. The handler still runs and
+  still pings Mongo; only the body is dropped. `GET` works identically if you
+  prefer to alert on the response body.
+- **Raise the request timeout.** If the service *has* gone to sleep, the waking
+  request takes ~50 s and a 30 s timeout reports a false outage. Leave a
+  retry/confirmation setting on so one slow check isn't an alert.
+- Because the endpoint returns **503** when Mongo is unreachable, the monitor
+  doubles as a database alarm — a 503 means the API is up but the database is
+  not, which is exactly when you want to know.
+
+**GitHub Actions (alternative).** `.github/workflows/keep-alive.yml` pings
+`/health` every 14 minutes and needs no third-party account. Set the repo
+variable `BACKEND_URL` if your URL differs. Its weakness is that GitHub
+disables scheduled workflows on repositories with no activity for 60 days — if
+cold starts reappear, check the workflow is still enabled. Running both is
+harmless, just redundant.
+
+Render's free tier allows 750 instance-hours per month against a ~730-hour
+month, so one always-on service fits — but there is no room for a second free
+service in the same account.
 
 ### 5.5 First deploy checklist
 1. Register the first account immediately — on a database that already holds

@@ -411,6 +411,75 @@ def _send_with_retry(msg: EmailMessage) -> bool:
     return False
 
 
+def diagnose_delivery(recipient: str) -> dict:
+    """Attempt one real send and report exactly why it failed.
+
+    ``email_mode`` only reflects configuration — it says the settings are
+    present, not that the host can reach the SMTP server. Many hosting
+    providers block outbound SMTP ports (25/465/587) to curb spam, which looks
+    identical to working config right up until nothing is delivered. This runs
+    the real transport and hands back the underlying error so that difference
+    is visible from the deployed environment rather than inferred from silence.
+    """
+    report = {
+        "mode": settings.email_delivery_mode,
+        "host": settings.SMTP_HOST,
+        "port": settings.SMTP_PORT,
+        "user_set": bool(settings.SMTP_USER),
+        "pass_set": bool(settings.SMTP_PASS),
+        "from": settings.SMTP_FROM or settings.SMTP_USER,
+        "delivered": False,
+        "error": None,
+        "error_type": None,
+        "hint": None,
+    }
+
+    if settings.email_delivery_mode != "smtp":
+        report["hint"] = (
+            "Not in SMTP mode — one of SMTP_HOST/SMTP_USER/SMTP_PASS is blank, "
+            "so mail is only logged."
+        )
+        return report
+
+    msg = _build_message(
+        subject="Shopper email delivery test",
+        recipient=recipient,
+        html_body=_wrap_html(
+            "Email delivery works",
+            _paragraph("If you are reading this, this environment can send mail."),
+            "Shopper delivery test",
+        ),
+        text_body="If you are reading this, this environment can send mail.",
+    )
+
+    try:
+        _deliver(msg)
+        report["delivered"] = True
+        return report
+    except Exception as exc:  # noqa: BLE001
+        report["error"] = str(exc)[:300]
+        report["error_type"] = type(exc).__name__
+
+    name = report["error_type"] or ""
+    lowered = (report["error"] or "").lower()
+    if name in {"TimeoutError", "socket.timeout"} or "timed out" in lowered:
+        report["hint"] = (
+            "The connection timed out rather than being rejected, which is what "
+            "a blocked outbound SMTP port looks like. Many hosts block 25/465/587. "
+            "Send over an HTTPS email API instead of SMTP."
+        )
+    elif "refused" in lowered or name == "ConnectionRefusedError":
+        report["hint"] = "Connection refused — the port is closed from this host."
+    elif name == "SMTPAuthenticationError":
+        report["hint"] = (
+            "Credentials rejected. Gmail needs an App Password (2-Step "
+            "Verification on), not the account password."
+        )
+    elif name.startswith("SMTP"):
+        report["hint"] = "The server answered but rejected the exchange; see error."
+    return report
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------

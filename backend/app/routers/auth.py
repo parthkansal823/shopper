@@ -25,7 +25,7 @@ from ..security import (
     require_user,
     verify_password,
 )
-from ..services import calendar_sync
+from ..services import calendar_sync, email_service
 from ..services.rate_limit import check_rate_limit, client_ip
 
 logger = logging.getLogger("schedulr.auth")
@@ -383,6 +383,16 @@ def google_calendar_disconnect(
     db.integrations.delete_one({"owner_id": owner_id, "key": calendar_sync.INTEGRATION_KEY})
     calendar_sync.invalidate(owner_id)
     return {"connected": False}
+
+
+@router.post("/email/test", summary="Send a test email and report why it failed")
+def email_delivery_test(user: dict = Depends(require_user)):
+    """Diagnose mail from *this* environment, sending only to the caller.
+
+    Deliberately restricted to the authenticated user's own address so it
+    cannot be used to send mail to anyone else.
+    """
+    return email_service.diagnose_delivery(user["email"])
 
 
 # ------------------------------------------------------------------- profile --
