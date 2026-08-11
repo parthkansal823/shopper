@@ -93,6 +93,8 @@ export const api = {
   changePassword: (payload) => request("/api/auth/change-password", json("PUT", payload)),
   googleLoginUrl: () => `${API_BASE}/api/auth/google`,
 
+  testEmailDelivery: () => request("/api/auth/email/test", json("POST")),
+
   // ------------------------------------------------- Google Calendar sync --
   getCalendarSyncStatus: () => request("/api/auth/google/calendar/status"),
   startCalendarSync: () => request("/api/auth/google/calendar/connect"),

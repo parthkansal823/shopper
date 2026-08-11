@@ -192,6 +192,35 @@ print(send_email_now(subject='Shopper test', recipient='you@example.com', \
 html_body='<p>hello</p>', text_body='hello'))"
 ```
 
+#### Mail that works locally but not once deployed
+This is a different problem, and the usual cause is not configuration:
+**many hosting providers block outbound SMTP ports (25, 465, 587)** to curb
+spam. Your laptop has no such restriction, so the same settings that work in
+development go silent in production.
+
+`"email_mode":"smtp"` on `/health` does **not** rule this out — it only reports
+that the settings are present, never that the host can reach the mail server.
+
+Two ways to tell them apart:
+
+1. **Read the deploy logs.** Failures are already logged:
+   `Email delivery to … failed on attempt 1/2: <the real error>`, followed by
+   `permanently failed`. A **timeout** means the port is blocked; a rejection
+   means credentials or policy.
+2. **`POST /api/auth/email/test`** (authenticated) runs one real send from the
+   deployed environment and returns the underlying error plus a hint. It only
+   ever mails the caller's own address.
+
+```bash
+curl -X POST https://<your-backend>.onrender.com/api/auth/email/test \
+     -H "Authorization: Bearer <your-jwt>"
+```
+
+If the port is blocked, no amount of SMTP configuration will fix it — the mail
+has to leave over HTTPS instead. Switch to a provider's HTTP API (Brevo,
+SendGrid and Mailgun all offer one on a free tier); their SMTP endpoints are
+blocked by the same rule, so the API is the part that matters.
+
 Interactive API docs are at `/docs` — disabled automatically in production.
 
 **An empty database looks broken.** With no availability and no event types,

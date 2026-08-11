@@ -132,6 +132,25 @@ export default function IntegrationsPage() {
   const [calendarSync, setCalendarSync] = useState({ connected: false, configured: true, needs_reconnect: false });
   const [calBusy, setCalBusy] = useState(false);
 
+  const [emailTest, setEmailTest] = useState(null);
+  const [emailBusy, setEmailBusy] = useState(false);
+
+  async function runEmailTest() {
+    setEmailBusy(true);
+    setEmailTest(null);
+    try {
+      const result = await api.testEmailDelivery();
+      setEmailTest(result);
+      if (result.delivered) toast.success("Test email sent — check your inbox.");
+      else toast.error("This server could not send email.");
+    } catch (error) {
+      setEmailTest({ delivered: false, error: error.message || "Request failed." });
+      toast.error(error.message || "Could not run the test.");
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
   async function refreshCalendarSync() {
     try {
       setCalendarSync(await api.getCalendarSyncStatus());
@@ -303,6 +322,45 @@ export default function IntegrationsPage() {
         <div className="card stat"><p className="stat-label">Available</p><p className="stat-value">{CATALOGUE.length}</p></div>
         <div className="card stat"><p className="stat-label">API keys</p><p className="stat-value">{apiKeys.length}</p></div>
       </div>
+
+      <SectionCard
+        title="Email delivery"
+        subtitle="Send a real test message from this server to your own address."
+      >
+        <div className="stack-3">
+          <div className="row-between" style={{ flexWrap: "wrap", gap: "var(--s3)" }}>
+            <p className="tiny subtle" style={{ maxWidth: "52ch" }}>
+              Booking confirmations and verification codes all go out from the server the
+              app is running on. If mail works locally but not once deployed, run this
+              there — it reports the actual reason instead of failing silently.
+            </p>
+            <button className="btn btn-sm" onClick={runEmailTest} disabled={emailBusy}>
+              {emailBusy ? <span className="spinner" /> : <Icon name="zap" size={13} />} Send test email
+            </button>
+          </div>
+
+          {emailTest && (
+            emailTest.delivered ? (
+              <p className="banner banner-ok tiny">
+                Delivered to your address via {emailTest.host}:{emailTest.port}. If it isn&apos;t
+                in your inbox, check spam.
+              </p>
+            ) : (
+              <div className="banner banner-danger tiny">
+                <p style={{ margin: 0, fontWeight: 600 }}>
+                  Could not send{emailTest.error_type ? ` — ${emailTest.error_type}` : ""}
+                </p>
+                {emailTest.error && (
+                  <p className="mono" style={{ margin: "6px 0 0", wordBreak: "break-word" }}>
+                    {emailTest.error}
+                  </p>
+                )}
+                {emailTest.hint && <p style={{ margin: "6px 0 0" }}>{emailTest.hint}</p>}
+              </div>
+            )
+          )}
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="Google Calendar sync"
