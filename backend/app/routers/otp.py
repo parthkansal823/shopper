@@ -6,7 +6,7 @@ from pymongo.database import Database
 from ..config import settings
 from ..database import get_db
 from ..schemas import OtpRequest, OtpRequestResponse, OtpVerify, OtpVerifyResponse
-from ..services import otp_service
+from ..services import email_service, otp_service
 from ..services.rate_limit import check_rate_limit, client_ip
 
 router = APIRouter(prefix="/api/public/otp", tags=["otp"])
@@ -24,7 +24,9 @@ def request_code(payload: OtpRequest, request: Request, db: Database = Depends(g
         window_seconds=settings.RATE_LIMIT_OTP_WINDOW,
     )
 
-    if not settings.email_enabled:
+    # Resolved, not configured: a Gmail account connected in the UI enables
+    # sending even when no SMTP_* values are set.
+    if email_service.active_transport() in {"disabled"}:
         raise HTTPException(
             status_code=503,
             detail="Email service is not configured. Please contact the organiser.",

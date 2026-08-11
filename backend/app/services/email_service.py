@@ -25,6 +25,7 @@ from typing import Optional
 import httpx
 
 from ..config import settings
+from . import gmail_sender
 
 logger = logging.getLogger(__name__)
 
@@ -440,10 +441,39 @@ def _deliver_http(msg: EmailMessage) -> None:
         )
 
 
+def active_transport() -> str:
+    """How mail actually leaves this process, right now.
+
+    ``settings.email_delivery_mode`` can only see configuration. A connected
+    Gmail account lives in the database, so it has to be resolved here — and it
+    wins, because it is the one a human explicitly chose in the UI.
+    """
+    try:
+        from ..database import get_db  # local import: avoids an import cycle
+
+        if gmail_sender.is_connected(get_db()):
+            return "gmail"
+    except Exception:  # noqa: BLE001
+        # A database hiccup must not take email down entirely; fall through to
+        # whatever is configured statically.
+        logger.warning("Could not read Gmail connection state", exc_info=True)
+    return settings.email_delivery_mode
+
+
+def _transport_for(name: str):
+    if name == "gmail":
+        from ..database import get_db
+
+        return lambda msg: gmail_sender.send(get_db(), msg)
+    if name in {"brevo", "resend"}:
+        return _deliver_http
+    return _deliver
+
+
 def _send_with_retry(msg: EmailMessage) -> bool:
     """Returns True if delivered, False otherwise. Never raises."""
     attempts = max(1, settings.SMTP_RETRY_COUNT + 1)
-    send = _deliver_http if settings.http_email_provider else _deliver
+    send = _transport_for(active_transport())
     for attempt in range(1, attempts + 1):
         try:
             send(msg)
@@ -470,8 +500,9 @@ def diagnose_delivery(recipient: str) -> dict:
     the real transport and hands back the underlying error so that difference
     is visible from the deployed environment rather than inferred from silence.
     """
+    transport = active_transport()
     report = {
-        "mode": settings.email_delivery_mode,
+        "mode": transport,
         "host": settings.SMTP_HOST,
         "port": settings.SMTP_PORT,
         "user_set": bool(settings.SMTP_USER),
@@ -483,11 +514,19 @@ def diagnose_delivery(recipient: str) -> dict:
         "hint": None,
     }
 
-    if settings.http_email_provider:
-        report["host"] = f"{settings.http_email_provider} HTTPS API"
+    if transport == "gmail":
+        from ..database import get_db
+
+        report["host"] = "Gmail API (HTTPS)"
+        report["port"] = 443
+        report["user_set"] = True
+        report["pass_set"] = True
+        report["from"] = gmail_sender.sender_address(get_db()) or report["from"]
+    elif transport in {"brevo", "resend"}:
+        report["host"] = f"{transport} HTTPS API"
         report["port"] = 443
         report["pass_set"] = True
-    elif settings.email_delivery_mode != "smtp":
+    elif transport != "smtp":
         report["hint"] = (
             "Not sending — no HTTPS provider key, and one of "
             "SMTP_HOST/SMTP_USER/SMTP_PASS is blank, so mail is only logged."
@@ -506,7 +545,7 @@ def diagnose_delivery(recipient: str) -> dict:
     )
 
     try:
-        (_deliver_http if settings.http_email_provider else _deliver)(msg)
+        _transport_for(transport)(msg)
         report["delivered"] = True
         return report
     except Exception as exc:  # noqa: BLE001
@@ -545,9 +584,9 @@ def send_email_now(
     text_body: str,
 ) -> bool:
     """Synchronous send. Returns True on success, False otherwise."""
-    if settings.email_delivery_mode == "console":
+    if active_transport() == "console":
         return _log_console_email(subject=subject, recipient=recipient, text_body=text_body)
-    if settings.email_delivery_mode == "disabled":
+    if active_transport() == "disabled":
         logger.warning("Email delivery disabled; refusing to send '%s' to %s", subject, recipient)
         return False
     msg = _build_message(
@@ -588,7 +627,7 @@ def send_email_background(
         return
     subject = subject_template.format(title=event_title)
 
-    if settings.email_delivery_mode == "console":
+    if active_transport() == "console":
         _log_console_email(
             subject=subject,
             recipient=recipient,
@@ -599,7 +638,7 @@ def send_email_background(
             ),
         )
         return
-    if settings.email_delivery_mode == "disabled":
+    if active_transport() == "disabled":
         logger.warning("Email delivery disabled; skipping '%s' email to %s", action, recipient)
         return
 

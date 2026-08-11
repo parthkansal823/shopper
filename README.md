@@ -217,8 +217,27 @@ curl -X POST https://<your-backend>.onrender.com/api/auth/email/test \
 ```
 
 If the port is blocked, no amount of SMTP configuration will fix it — the mail
-has to leave over HTTPS instead. Set **one** of these and redeploy; either
-takes precedence over `SMTP_*` automatically, and nothing else changes:
+has to leave over HTTPS instead.
+
+**Easiest: send through Gmail.** Integrations → **Connect Gmail**. It reuses
+the Google OAuth already configured, needs no third-party account or API key,
+and sends over HTTPS like any other request. The grant is scoped
+`gmail.send` — permission to send and nothing else; it cannot read a message.
+
+The connected mailbox becomes the sender, and its address overwrites the `From`
+header, because Gmail refuses to send as anyone else. The grant is stored once
+in `app_settings` and applies app-wide, exactly as the single `SMTP_USER` did —
+it is not per-tenant. Google's own limit is roughly 500 messages a day on a
+free account.
+
+Register the third callback in the Google console:
+
+```
+https://<your-backend>.onrender.com/api/auth/google/gmail/callback
+```
+
+**Alternative: a provider's HTTPS API.** Set **one** of these and redeploy;
+either takes precedence over `SMTP_*` automatically:
 
 ```
 BREVO_API_KEY=xkeysib-…      # or
@@ -232,8 +251,15 @@ way that matters for a booking app: Brevo sends to any recipient once the
 sender address is verified, while Resend needs a **verified domain** before it
 will mail anyone other than your own account.
 
-`/health` then reports `"email_mode":"brevo"` (or `"resend"`) instead of
-`"smtp"`, which is the quickest confirmation the new path is live.
+`/health` reports the transport actually in use — `gmail`, `brevo`, `resend`,
+`smtp`, `console` or `disabled` — resolved at request time rather than read
+from configuration, so a Gmail account connected through the UI shows up there
+immediately. That is the quickest confirmation the new path is live.
+
+Precedence is: a connected Gmail account, then `BREVO_API_KEY`, then
+`RESEND_API_KEY`, then `SMTP_*`. Connecting Gmail therefore takes over without
+removing any existing SMTP settings, and disconnecting falls straight back to
+them.
 
 Interactive API docs are at `/docs` — disabled automatically in production.
 
@@ -325,9 +351,15 @@ against Google:
 ```
 https://<your-backend>.onrender.com/api/auth/google/callback
 https://<your-backend>.onrender.com/api/auth/google/calendar/callback
+https://<your-backend>.onrender.com/api/auth/google/gmail/callback
 http://localhost:8000/api/auth/google/callback
 http://localhost:8000/api/auth/google/calendar/callback
+http://localhost:8000/api/auth/google/gmail/callback
 ```
+
+Three grants, three callbacks: signing in, reading a calendar for conflicts,
+and sending mail. They are deliberately separate so a host can sign in without
+handing over their calendar or mailbox.
 
 *Authorised JavaScript origins* stays empty — the code never leaves the server,
 so only redirect URIs matter. Two things that reliably cost an hour:

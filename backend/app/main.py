@@ -22,6 +22,7 @@ from .routers import (
     workflows,
 )
 from .seed import seed_database
+from .services import email_service
 from .services.scheduler import scheduler_loop
 
 logging.basicConfig(
@@ -142,7 +143,7 @@ def health_check():
     payload = {
         "status": "ok" if db_ok else "degraded",
         "database": "up" if db_ok else "down",
-        "email_mode": settings.email_delivery_mode,
+        "email_mode": email_service.active_transport(),
     }
     return JSONResponse(status_code=200 if db_ok else 503, content=payload)
 

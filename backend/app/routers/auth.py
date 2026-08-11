@@ -25,7 +25,7 @@ from ..security import (
     require_user,
     verify_password,
 )
-from ..services import calendar_sync, email_service
+from ..services import calendar_sync, email_service, gmail_sender
 from ..services.rate_limit import check_rate_limit, client_ip
 
 logger = logging.getLogger("schedulr.auth")
@@ -382,6 +382,92 @@ def google_calendar_disconnect(
 ):
     db.integrations.delete_one({"owner_id": owner_id, "key": calendar_sync.INTEGRATION_KEY})
     calendar_sync.invalidate(owner_id)
+    return {"connected": False}
+
+
+# ------------------------------------------------- Gmail sending (HTTPS) --
+
+def _gmail_redirect(status_value: str) -> RedirectResponse:
+    base = settings.FRONTEND_URL.rstrip("/")
+    return RedirectResponse(url=f"{base}/integrations?gmail={status_value}")
+
+
+@router.get("/google/gmail/connect", summary="Begin the Gmail send grant")
+def google_gmail_connect(
+    db: Database = Depends(get_db),
+    owner_id: str = Depends(require_owner_id),
+):
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="Google OAuth is not configured.")
+
+    state = secrets.token_urlsafe(32)
+    db.oauth_states.insert_one({
+        "state": state,
+        "owner_id": owner_id,
+        "purpose": "gmail_send",
+        "created_at": _utcnow(),
+        "expires_at": _utcnow() + timedelta(minutes=10),
+    })
+
+    params = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": settings.GOOGLE_GMAIL_REDIRECT_URI,
+        "response_type": "code",
+        "scope": f"openid email {gmail_sender.SEND_SCOPE}",
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state,
+    }
+    return {"url": f"{GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"}
+
+
+@router.get("/google/gmail/callback", summary="Store the Gmail send grant")
+def google_gmail_callback(
+    state: str,
+    code: str = "",
+    error: str = "",
+    db: Database = Depends(get_db),
+):
+    row = db.oauth_states.find_one_and_delete({"state": state, "purpose": "gmail_send"})
+    if not row:
+        return _gmail_redirect("invalid")
+    if error:
+        return _gmail_redirect("denied")
+
+    try:
+        refresh_token, address = gmail_sender.exchange_code(
+            code, settings.GOOGLE_GMAIL_REDIRECT_URI
+        )
+    except RuntimeError as exc:
+        if str(exc) == "no_refresh_token":
+            return _gmail_redirect("norefresh")
+        logger.warning("Gmail grant exchange failed: %s", exc)
+        return _gmail_redirect("failed")
+
+    gmail_sender.save_connection(db, refresh_token, address)
+    return _gmail_redirect("connected")
+
+
+@router.get("/google/gmail/status", summary="Is Gmail sending connected?")
+def google_gmail_status(
+    db: Database = Depends(get_db),
+    owner_id: str = Depends(require_owner_id),
+):
+    doc = gmail_sender.get_connection(db)
+    return {
+        "connected": gmail_sender.is_connected(db),
+        "needs_reconnect": bool(doc and doc.get("invalid")),
+        "email": (doc or {}).get("email", ""),
+        "configured": bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET),
+    }
+
+
+@router.delete("/google/gmail", summary="Disconnect Gmail sending")
+def google_gmail_disconnect(
+    db: Database = Depends(get_db),
+    owner_id: str = Depends(require_owner_id),
+):
+    gmail_sender.disconnect(db)
     return {"connected": False}
 
 

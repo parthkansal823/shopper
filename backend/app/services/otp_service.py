@@ -12,6 +12,7 @@ from typing import Optional
 from pymongo.database import Database
 
 from ..config import settings
+from . import email_service
 from .email_service import send_otp_email
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ def request_otp(db: Database, email: str) -> OtpRequestResult:
         )
 
     # In development with console fallback, surface the code so devs can test
-    dev_code = code if settings.email_delivery_mode == "console" else None
+    dev_code = code if email_service.active_transport() == "console" else None
     return OtpRequestResult(
         sent=True,
         expires_in_seconds=settings.OTP_TTL_SECONDS,

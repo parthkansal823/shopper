@@ -135,6 +135,42 @@ export default function IntegrationsPage() {
   const [emailTest, setEmailTest] = useState(null);
   const [emailBusy, setEmailBusy] = useState(false);
 
+  const [gmail, setGmail] = useState({ connected: false, configured: true, needs_reconnect: false, email: "" });
+  const [gmailBusy, setGmailBusy] = useState(false);
+
+  async function refreshGmail() {
+    try {
+      setGmail(await api.getGmailStatus());
+    } catch {
+      setGmail((current) => ({ ...current, connected: false }));
+    }
+  }
+
+  async function connectGmail() {
+    setGmailBusy(true);
+    try {
+      const { url } = await api.startGmailConnect();
+      window.location.href = url;
+    } catch (error) {
+      toast.error(error.message || "Could not start Gmail setup.");
+      setGmailBusy(false);
+    }
+  }
+
+  async function disconnectGmail() {
+    if (!window.confirm("Disconnect Gmail? Outgoing mail falls back to SMTP, which many hosts block.")) return;
+    setGmailBusy(true);
+    try {
+      await api.disconnectGmail();
+      toast.success("Gmail disconnected.");
+      refreshGmail();
+    } catch (error) {
+      toast.error(error.message || "Could not disconnect.");
+    } finally {
+      setGmailBusy(false);
+    }
+  }
+
   async function runEmailTest() {
     setEmailBusy(true);
     setEmailTest(null);
@@ -206,22 +242,35 @@ export default function IntegrationsPage() {
   // Report it, then strip the parameter so a refresh doesn't repeat the toast.
   useEffect(() => {
     refreshCalendarSync();
+    refreshGmail();
 
-    const result = new URLSearchParams(window.location.search).get("calendar");
-    if (!result) return;
-
-    const messages = {
-      connected: ["success", "Google Calendar connected — your events now block times."],
-      denied: ["error", "Google Calendar access was declined."],
-      invalid: ["error", "That setup link expired. Please try connecting again."],
-      failed: ["error", "Google rejected the connection. Please try again."],
-      norefresh: ["error", "Google didn't return lasting access. Remove Shopper from your Google account permissions, then reconnect."],
+    const params = new URLSearchParams(window.location.search);
+    const outcomes = {
+      calendar: {
+        connected: ["success", "Google Calendar connected — your events now block times."],
+        denied: ["error", "Google Calendar access was declined."],
+        invalid: ["error", "That setup link expired. Please try connecting again."],
+        failed: ["error", "Google rejected the connection. Please try again."],
+        norefresh: ["error", "Google didn't return lasting access. Remove Shopper from your Google account permissions, then reconnect."],
+      },
+      gmail: {
+        connected: ["success", "Gmail connected — outgoing mail now sends over HTTPS."],
+        denied: ["error", "Gmail access was declined."],
+        invalid: ["error", "That setup link expired. Please try connecting again."],
+        failed: ["error", "Google rejected the connection. Please try again."],
+        norefresh: ["error", "Google didn't return lasting access. Remove Shopper from your Google account permissions, then reconnect."],
+      },
     };
-    const [kind, message] = messages[result] || [];
-    if (kind === "success") toast.success(message);
-    else if (kind) toast.error(message);
 
-    window.history.replaceState({}, "", window.location.pathname);
+    let matched = false;
+    for (const [key, messages] of Object.entries(outcomes)) {
+      const [kind, message] = messages[params.get(key)] || [];
+      if (!kind) continue;
+      matched = true;
+      if (kind === "success") toast.success(message);
+      else toast.error(message);
+    }
+    if (matched) window.history.replaceState({}, "", window.location.pathname);
   }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = useMemo(() => {
@@ -325,9 +374,43 @@ export default function IntegrationsPage() {
 
       <SectionCard
         title="Email delivery"
-        subtitle="Send a real test message from this server to your own address."
+        subtitle="How confirmations and verification codes leave the server."
       >
         <div className="stack-3">
+          {gmail.configured && (
+            <div className="row-between" style={{ flexWrap: "wrap", gap: "var(--s3)" }}>
+              <div style={{ maxWidth: "52ch" }}>
+                <p className="small" style={{ fontWeight: 600 }}>
+                  Send through Gmail
+                  {gmail.connected && (
+                    <span className="badge" style={{ marginLeft: 8 }}>
+                      <Icon name="check" size={11} strokeWidth={3} /> Active
+                    </span>
+                  )}
+                </p>
+                <p className="tiny subtle">
+                  {gmail.connected
+                    ? `Mail is sent from ${gmail.email} over HTTPS.`
+                    : "Most hosts block the ports SMTP needs, which is why mail can work locally but not once deployed. Sending through Gmail uses HTTPS instead, and needs no other service."}
+                </p>
+              </div>
+              {gmail.connected ? (
+                <button className="btn btn-sm btn-ghost btn-danger" onClick={disconnectGmail} disabled={gmailBusy}>
+                  {gmailBusy ? <span className="spinner" /> : <Icon name="close" size={13} />} Disconnect
+                </button>
+              ) : (
+                <button className="btn btn-sm" onClick={connectGmail} disabled={gmailBusy}>
+                  {gmailBusy ? <span className="spinner" /> : <Icon name="link" size={13} />} Connect Gmail
+                </button>
+              )}
+            </div>
+          )}
+
+          {gmail.needs_reconnect && (
+            <p className="banner banner-warn tiny">
+              Google rejected the saved permission — access was probably revoked. Reconnect to resume sending.
+            </p>
+          )}
           <div className="row-between" style={{ flexWrap: "wrap", gap: "var(--s3)" }}>
             <p className="tiny subtle" style={{ maxWidth: "52ch" }}>
               Booking confirmations and verification codes all go out from the server the

@@ -100,6 +100,12 @@ class Settings:
         "GOOGLE_CALENDAR_REDIRECT_URI",
         "http://localhost:8000/api/auth/google/calendar/callback",
     )
+    # Sending mail through Gmail is a third, separate grant (scope gmail.send).
+    # Register this callback in the Google console alongside the other two.
+    GOOGLE_GMAIL_REDIRECT_URI: str = os.getenv(
+        "GOOGLE_GMAIL_REDIRECT_URI",
+        "http://localhost:8000/api/auth/google/gmail/callback",
+    )
 
     # ----- Public URLs -----
     # FRONTEND_URL builds the invitee's manage/reschedule links; API_PUBLIC_URL

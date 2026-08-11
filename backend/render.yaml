@@ -72,6 +72,8 @@ services:
         value: https://shopper-backend-mqcf.onrender.com/api/auth/google/callback
       - key: GOOGLE_CALENDAR_REDIRECT_URI
         value: https://shopper-backend-mqcf.onrender.com/api/auth/google/calendar/callback
+      - key: GOOGLE_GMAIL_REDIRECT_URI
+        value: https://shopper-backend-mqcf.onrender.com/api/auth/google/gmail/callback
 
       # ----- SMTP (required for OTP and notification email) -----
       - key: SMTP_HOST

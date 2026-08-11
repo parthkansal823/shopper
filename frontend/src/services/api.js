@@ -94,6 +94,9 @@ export const api = {
   googleLoginUrl: () => `${API_BASE}/api/auth/google`,
 
   testEmailDelivery: () => request("/api/auth/email/test", json("POST")),
+  getGmailStatus: () => request("/api/auth/google/gmail/status"),
+  startGmailConnect: () => request("/api/auth/google/gmail/connect"),
+  disconnectGmail: () => request("/api/auth/google/gmail", json("DELETE")),
 
   // ------------------------------------------------- Google Calendar sync --
   getCalendarSyncStatus: () => request("/api/auth/google/calendar/status"),
